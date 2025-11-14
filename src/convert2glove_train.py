@@ -45,7 +45,7 @@ def convert2eval(
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-s", "--source-path", type=str, default="./data/pretrain-dataset/multilingual-pythia-tok_tk")
-    parser.add_argument("-t", "--target-path", type=str, default="./data/pretrain-dataset/multilingual-llama-tok_tk")
+    parser.add_argument("-t", "--target-path", type=str, default="./data/pretrain-dataset/multilingual-biogpt-tok_tk")
     parser.add_argument("-k", "--key", type=str, default="train")
     parser.add_argument("-m", "--min-line-length", type=int, default=15)
     parser.add_argument("-l", "--max-line", type=int, default=10000000)

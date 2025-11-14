@@ -1,7 +1,9 @@
 #!/bin/sh
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 
-export MAIN_DIR="/path/2/TokAlign/"
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+export MAIN_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd ${MAIN_DIR}
 
 export GPUNUM=8
@@ -9,7 +11,7 @@ export MASTER_PORT=16899
 
 export MODEL="1b"
 
-export TGT="gemma"
+export TGT="biogpt"
 
 MODEL_NAME="./data/pythia2${TGT}/${MODEL}/glove"
 

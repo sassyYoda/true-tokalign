@@ -92,13 +92,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-s", "--source-glove-vector-path", type=str, default="./data/glove_vec.pythia.txt")
     parser.add_argument("-s1", "--source-vocab-size", type=int, default=50304)
-    parser.add_argument("-t", "--target-glove-vector-path", type=str, default="./data/glove_vec.gemma.txt")
-    parser.add_argument("-s2", "--target-vocab-size", type=int, default=256000)
-    parser.add_argument("-g", "--gold-target-to-source-path", type=str, default="./data/Vocab_count/gemma2pythia.json")
+    parser.add_argument("-t", "--target-glove-vector-path", type=str, default="./data/glove_vec.biogpt.txt")
+    parser.add_argument("-s2", "--target-vocab-size", type=int, default=42384)
+    parser.add_argument("-g", "--gold-target-to-source-path", type=str, default="./data/Vocab_count/biogpt2pythia.json")
     parser.add_argument("-r", "--relative-representation", action='store_true')
     parser.add_argument("-v", "--vanilla-representation", action='store_true')
     parser.add_argument("-n", "--pivotal-token-number", type=int, default=300)
-    parser.add_argument("-o", "--output-path", type=str, default="./data/pythia2gemma/glove.json")
+    parser.add_argument("-o", "--output-path", type=str, default="./data/pythia2biogpt/glove.json")
 
     args = parser.parse_args()
 

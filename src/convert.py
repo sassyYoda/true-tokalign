@@ -19,10 +19,10 @@ _LMHEAD_DICT = {
 }
 
 def trans2switch(
-    trans_path="./log/gemma2pythia/glove.json",
+    trans_path="./log/biogpt2pythia/glove.json",
     src_clm_path="./data/pythia-1b",
-    tgt_clm_path="./data/pythia-1b2gemma",
-    tgt_tok_path="./data/gemma-2b",
+    tgt_clm_path="./data/pythia-1b2biogpt",
+    tgt_tok_path="./data/biogpt",
     random_shuffle=-1,
 ):
     src_model = AutoModelForCausalLM.from_pretrained(src_clm_path, torch_dtype=torch.bfloat16, trust_remote_code=True)
@@ -74,8 +74,8 @@ def trans2switch(
 
 def random_permute(
     src_clm_path="./data/pythia-1b",
-    tgt_clm_path="./data/pythia-1b2gemma",
-    tgt_tok_path="./data/gemma-2b",
+    tgt_clm_path="./data/pythia-1b2biogpt",
+    tgt_tok_path="./data/biogpt",
     seed=0,
 ):
     random.seed(seed)
@@ -116,8 +116,8 @@ def random_permute(
 
 def random_initial_all(
     src_clm_path="./data/pythia-1b",
-    tgt_clm_path="./data/pythia-1b2gemma",
-    tgt_tok_path="./data/gemma-2b",
+    tgt_clm_path="./data/pythia-1b2biogpt",
+    tgt_tok_path="./data/biogpt",
     seed=0,
 ):
     random.seed(seed)
@@ -153,8 +153,8 @@ def random_initial_all(
 
 def random_initial_aug(
     src_clm_path="./data/pythia-1b",
-    tgt_clm_path="./data/pythia-1b2gemma",
-    tgt_tok_path="./data/gemma-2b",
+    tgt_clm_path="./data/pythia-1b2biogpt",
+    tgt_tok_path="./data/biogpt",
     seed=0,
 ):
     random.seed(seed)
@@ -170,10 +170,10 @@ def random_initial_aug(
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("-m", "--one2one-matrix-path", type=str, default="./data/pythia2gemma/glove.json")
+    parser.add_argument("-m", "--one2one-matrix-path", type=str, default="./data/pythia2biogpt/glove.json")
     parser.add_argument("-s", "--source-model-path", type=str, default="EleutherAI/pythia-1b")
-    parser.add_argument("-t", "--target-tokenizer-path", type=str, default="google/gemma-2b")
-    parser.add_argument("-o", "--output-model-path", type=str, default="./data/pythia2gemma/glove")
+    parser.add_argument("-t", "--target-tokenizer-path", type=str, default="microsoft/biogpt")
+    parser.add_argument("-o", "--output-model-path", type=str, default="./data/pythia2biogpt/glove")
     parser.add_argument("-r", "--random-shuffle-percentage", type=float, default=-1, help="The percentage of token pairs that are randomly shuffled rather than map to the target.")
 
     args = parser.parse_args()
