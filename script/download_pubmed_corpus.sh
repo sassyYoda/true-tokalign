@@ -8,6 +8,9 @@ cd ${MAIN_DIR}
 # Output path for the formatted corpus
 export OUTPUT_PATH="${MAIN_DIR}/data/pretrain-corpus/pubmed-abstract.json"
 
+# Limit to 1 billion tokens
+export MAX_TOKENS=1000000000
+
 # Optional: limit the number of samples for testing (set to None or remove for full dataset)
 # export MAX_SAMPLES=10000
 
@@ -16,9 +19,11 @@ export OUTPUT_PATH="${MAIN_DIR}/data/pretrain-corpus/pubmed-abstract.json"
 
 echo "Downloading and preparing PubMed abstract dataset..."
 echo "Output path: ${OUTPUT_PATH}"
+echo "Max tokens: ${MAX_TOKENS:,}"
 
 python script/download_pubmed_corpus.py \
     -o ${OUTPUT_PATH} \
+    -t ${MAX_TOKENS} \
     ${MAX_SAMPLES:+-m ${MAX_SAMPLES}} \
     ${REVISION:+-r ${REVISION}}
 
