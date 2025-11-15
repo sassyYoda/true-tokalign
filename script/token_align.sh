@@ -4,7 +4,7 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 export MAIN_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # git clone https://github.com/stanfordnlp/GloVe.git
-export GLOVE_DIR="${GLOVE_DIR:-${HOME}/GloVe}"
+export GLOVE_DIR="${GLOVE_DIR:-$(cd "${MAIN_DIR}/.." && pwd)/GloVe}"
 
 export MODLE_PATH1="EleutherAI/pythia-1b"
 export TOKENIZER_PATH1="EleutherAI/pythia-1b"
