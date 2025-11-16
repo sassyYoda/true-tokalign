@@ -8,7 +8,7 @@ peft==0.8.2
 nltk==3.8
 scikit-learn==1.2.1
 scipy==1.12.0
-#flash-attn==2.5.0 - download separately -- pip install flash-attn --no-build-isolation
+#flash-attn==2.5.0 - download separately -- MAX_JOBS=2 pip install flash-attn==2.5.0 --no-build-isolation
 sentence-transformers>=2.2.0
 numpy>=1.24.0
 pandas>=1.5.0

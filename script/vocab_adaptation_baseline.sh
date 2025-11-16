@@ -1,5 +1,5 @@
 #!/bin/sh
-export CUDA_VISIBLE_DEVICES=4,5,6,7
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -7,13 +7,14 @@ export MAIN_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd ${MAIN_DIR}
 
 export GPUNUM=4
-export MASTER_PORT=16900
+export MASTER_PORT=16899
 
 export MODEL="1b"
 
 export TGT="biogpt"
 
-MODEL_NAME="./data/pythia2${TGT}/TokAlign-Init-1B"
+# Baseline uses original Pythia-1B model
+MODEL_NAME="EleutherAI/pythia-1b"
 
 export DATASET_PATH="./data/pretrain-dataset/pile00-${TGT}-tokenized"
 # export DATASET_PATH="./data/pretrain-dataset/pile00-sample-${TGT}-tokenized"
@@ -41,7 +42,7 @@ export TRAIN_START_IDX=0
 
 export ADD_PARAMETERS=""
 
-PREFIX="${MODEL}/${SEED}_${TGT}_S1"
+PREFIX="${MODEL}/baseline_${SEED}_pythia_S1"
 
 if [ "${RESUME}" != "False" ];
 then
@@ -91,7 +92,7 @@ export TRAIN_START_IDX=2560000
 
 export ADD_PARAMETERS=""
 
-PREFIX="${MODEL}/${SEED}_${TGT}_S2"
+PREFIX="${MODEL}/baseline_${SEED}_pythia_S2"
 
 MODEL_DIR="${MAIN_DIR}/log/$PREFIX"
 LOG_FILE="${MAIN_DIR}/log/${PREFIX}.log"
@@ -125,4 +126,3 @@ accelerate launch \
     ${ADD_PARAMETERS} \
     --warmup_ratio 0.03 \
     --use_flash_attn True 2>&1 >$LOG_FILE
-  
