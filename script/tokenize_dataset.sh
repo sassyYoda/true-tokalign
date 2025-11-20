@@ -9,8 +9,8 @@ export CACHE_DIR="${MAIN_DIR}/data/cache"
 export MODLE_PATH="./data/pythia2qwen2-7b/TokAlign-Init-1B"
 export TOKENIZER_PATH="./data/pythia2qwen2-7b/TokAlign-Init-1B"
 
-# export TRAIN_FILE="./data/pretrain-corpus/pile00.json"
-export TRAIN_FILE="./data/pretrain-corpus/glove-corpus-1B.jsonl"
+# Using The Pile corpus for fine-tuning (as specified in TokAlign paper)
+export TRAIN_FILE="./data/pretrain-corpus/pile-corpus.jsonl"
 
 export DATASET_PATH="./data/pretrain-dataset/pile00-qwen2-7b-tokenized"
 # export DATASET_PATH="./data/pretrain-dataset/pile00-sample-qwen2-7b-tokenized"
