@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 # coding=utf-8
 """
-Prepare The Pile corpus for post-alignment fine-tuning.
+Prepare Pile corpus for post-alignment fine-tuning.
 Based on TokAlign paper: uses vanilla pretraining corpus Pile from Pythia.
+Uses Common Pile (comma_v0.1_training_dataset) as alternative to EleutherAI/pile
+since the original is no longer available from the-eye.eu.
 """
 
 import json
@@ -22,8 +24,8 @@ def main():
     parser.add_argument(
         "--dataset-name",
         type=str,
-        default="EleutherAI/pile",
-        help="The Pile dataset name on HuggingFace (default: EleutherAI/pile)"
+        default="common-pile/comma_v0.1_training_dataset",
+        help="Pile dataset name on HuggingFace (default: common-pile/comma_v0.1_training_dataset, alternative to EleutherAI/pile)"
     )
     parser.add_argument(
         "--split",
@@ -52,7 +54,7 @@ def main():
     args = parser.parse_args()
     
     print("="*60)
-    print("Preparing The Pile Corpus")
+    print("Preparing Pile Corpus (Common Pile)")
     print("="*60)
     print(f"Dataset: {args.dataset_name}")
     print(f"Split: {args.split}")

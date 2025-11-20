@@ -7,7 +7,9 @@ cd ${MAIN_DIR}
 
 # Default paths
 export OUTPUT_PATH="${MAIN_DIR}/data/pretrain-corpus/pile-corpus.jsonl"
-export DATASET_NAME="EleutherAI/pile"
+# Using Common Pile (comma_v0.1_training_dataset) as alternative to The Pile
+# The original EleutherAI/pile is no longer available from the-eye.eu
+export DATASET_NAME="common-pile/comma_v0.1_training_dataset"
 export SPLIT="train"
 export CACHE_DIR="${MAIN_DIR}/data/cache"
 
@@ -22,7 +24,7 @@ export USE_STREAMING="true"
 mkdir -p "$(dirname ${OUTPUT_PATH})"
 
 echo "=========================================="
-echo "Preparing The Pile Corpus"
+echo "Preparing Pile Corpus (Common Pile)"
 echo "=========================================="
 echo "Dataset: ${DATASET_NAME}"
 echo "Split: ${SPLIT}"
