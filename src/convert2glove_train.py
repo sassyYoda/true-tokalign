@@ -1,5 +1,6 @@
 import datasets
 import argparse
+from tqdm import tqdm
 
 def convert2train(
     src_path = "llama-3-tok-20GB_tk",
@@ -8,15 +9,22 @@ def convert2train(
     min_line_len = 15,
     max_line = 1000000
 ):
+    print(f"Loading dataset from {src_path}...")
     d = datasets.load_from_disk(src_path)[key]
+    total_examples = min(max_line, len(d))
+    print(f"Processing {total_examples:,} examples (min length: {min_line_len})...")
 
+    written = 0
     with open(tgt_path, "w") as f:
-        for i in range(min(max_line, len(d))):
+        for i in tqdm(range(total_examples), desc="Extracting token IDs"):
             data = d[i]["input_ids"]
             if len(data) < min_line_len:
                 continue
             line = " ".join([f"{cd}" for cd in data])
             f.write(line+"\n")
+            written += 1
+    
+    print(f"Written {written:,} lines to {tgt_path}")
 
 def convert2eval(
     src_tok_path = "llama-3-tok-20GB_tk",
@@ -26,12 +34,18 @@ def convert2eval(
     min_line_len = 15,
     max_line = 1000,
 ):
+    print(f"Loading source dataset from {src_tok_path}...")
     d1 = datasets.load_from_disk(src_tok_path)
+    print(f"Loading target dataset from {tgt_tok_path}...")
     d2 = datasets.load_from_disk(tgt_tok_path)
     assert(len(d1[key]) == len(d2[key]))
+    
+    total_examples = min(max_line, len(d1[key]))
+    print(f"Processing {total_examples:,} aligned examples (min length: {min_line_len})...")
 
+    written = 0
     with open(file_path, "w") as f:
-        for i in range(max_line):
+        for i in tqdm(range(total_examples), desc="Extracting aligned token IDs"):
             data1 = d1[key][i]["input_ids"]
             data2 = d2[key][i]["input_ids"]
             if len(data1) < min_line_len or len(data2) < min_line_len:
@@ -41,6 +55,9 @@ def convert2eval(
             line2 = " ".join([f"{cd}" for cd in data2])
 
             f.write(f"{line1}\t{line2}\n")
+            written += 1
+    
+    print(f"Written {written:,} aligned lines to {file_path}")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
