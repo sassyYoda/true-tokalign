@@ -389,19 +389,43 @@ def main():
     try:
         print("\n" + "="*60)
         print("Loading Proof-Pile-2 dataset (streaming mode)...")
-        proof_pile_dataset = load_dataset(
-            args.proof_pile_dataset, 
-            "default",  # Use "default" config for full dataset
-            cache_dir=args.cache_dir, 
-            streaming=True,
-            split="train",
-            trust_remote_code=True
-        )
+        # Try loading individual configs and combining (avoids zstd issues with "default")
+        configs = ["arxiv", "open-web-math", "algebraic-stack"]
+        proof_pile_datasets = []
         
-        proof_pile_texts, actual_tokens = sample_from_dataset(
-            proof_pile_dataset, proof_pile_tokens, tokenizer, "Proof-Pile-2", seed=args.seed + 2, is_streaming=True
-        )
-        all_texts.extend(proof_pile_texts)
+        for config in configs:
+            try:
+                print(f"Loading Proof-Pile-2 config: {config}...")
+                ds = load_dataset(
+                    args.proof_pile_dataset, 
+                    config,
+                    cache_dir=args.cache_dir, 
+                    streaming=True,
+                    split="train",
+                    trust_remote_code=True
+                )
+                proof_pile_datasets.append(ds)
+                print(f"Successfully loaded {config}")
+            except Exception as config_error:
+                print(f"Warning: Could not load config {config}: {config_error}")
+        
+        if not proof_pile_datasets:
+            raise Exception("Could not load any Proof-Pile-2 configs")
+        
+        # Sample proportionally from all configs
+        tokens_per_config = proof_pile_tokens // len(proof_pile_datasets)
+        all_proof_pile_texts = []
+        total_proof_pile_tokens = 0
+        
+        for i, ds in enumerate(proof_pile_datasets):
+            texts, tokens = sample_from_dataset(
+                ds, tokens_per_config, tokenizer, f"Proof-Pile-2-{configs[i]}", seed=args.seed + 2 + i, is_streaming=True
+            )
+            all_proof_pile_texts.extend(texts)
+            total_proof_pile_tokens += tokens
+        
+        all_texts.extend(all_proof_pile_texts)
+        print(f"\nCollected {total_proof_pile_tokens:,} tokens from Proof-Pile-2 ({len(all_proof_pile_texts):,} examples)")
     except Exception as e:
         print(f"Error loading Proof-Pile-2: {e}")
         import traceback
