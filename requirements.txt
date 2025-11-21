@@ -14,3 +14,4 @@ numpy>=1.24.0
 pandas>=1.5.0
 sacremoses>=0.0.53
 zstandard>=0.21.0
+tf-keras>=2.15.0
