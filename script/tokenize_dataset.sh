@@ -15,8 +15,11 @@ export TRAIN_FILE="./data/pretrain-corpus/pile-corpus.jsonl"
 export DATASET_PATH="./data/pretrain-dataset/pile00-qwen2-7b-tokenized"
 # export DATASET_PATH="./data/pretrain-dataset/pile00-sample-qwen2-7b-tokenized"
 
-export NUM_WORKERS=60
+export NUM_WORKERS=180 #60 if not using 8 gpu behemoth
 export BLOCK_SIZE=2048
+
+# Create log directory if it doesn't exist
+mkdir -p ./log
 
 HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 
