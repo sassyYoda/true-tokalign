@@ -410,28 +410,54 @@ def main():
                     )
                     # Test if streaming works by trying to get first example
                     test_iter = iter(ds)
-                    next(test_iter)  # This will fail if zstd error occurs
-                    proof_pile_datasets.append(ds)
-                    is_streaming_list.append(True)
-                    print(f"Successfully loaded {config} (streaming mode)")
+                    try:
+                        first_example = next(test_iter)  # This will fail if zstd error occurs
+                        # Verify we got actual data
+                        if isinstance(first_example, dict):
+                            text = first_example.get("text") or first_example.get("content") or first_example.get("code") or ""
+                            if not text or len(str(text).strip()) == 0:
+                                raise ValueError(f"First example from {config} has no text content")
+                        proof_pile_datasets.append(ds)
+                        is_streaming_list.append(True)
+                        print(f"Successfully loaded {config} (streaming mode)")
+                    except StopIteration:
+                        print(f"Warning: Config {config} streaming dataset is empty. Skipping.")
+                    except Exception as test_error:
+                        raise  # Re-raise zstd and other errors
                 except Exception as stream_error:
                     if "zstd" in str(stream_error).lower() or "decompress" in str(stream_error).lower():
                         print(f"Streaming failed for {config} (zstd error), trying non-streaming...")
-                        ds = load_dataset(
-                            args.proof_pile_dataset, 
-                            config,
-                            cache_dir=args.cache_dir, 
-                            streaming=False,
-                            split="train",
-                            trust_remote_code=True
-                        )
-                        proof_pile_datasets.append(ds)
-                        is_streaming_list.append(False)
-                        print(f"Successfully loaded {config} (non-streaming mode)")
+                        try:
+                            ds = load_dataset(
+                                args.proof_pile_dataset, 
+                                config,
+                                cache_dir=args.cache_dir, 
+                                streaming=False,
+                                split="train",
+                                trust_remote_code=True
+                            )
+                            # Verify dataset has data
+                            if isinstance(ds, dict):
+                                ds = ds.get("train", ds.get(list(ds.keys())[0]))
+                            
+                            # Check if dataset is empty
+                            if len(ds) == 0:
+                                print(f"Warning: Config {config} loaded but has 0 examples. Skipping.")
+                            else:
+                                proof_pile_datasets.append(ds)
+                                is_streaming_list.append(False)
+                                print(f"Successfully loaded {config} (non-streaming mode, {len(ds):,} examples)")
+                        except Exception as non_stream_error:
+                            print(f"Non-streaming also failed for {config}: {non_stream_error}")
+                            import traceback
+                            traceback.print_exc()
+                            print(f"Skipping config {config}, will continue with other configs")
                     else:
-                        raise
+                        print(f"Streaming failed for {config} with non-zstd error: {stream_error}")
+                        print(f"Skipping config {config}, will continue with other configs")
             except Exception as config_error:
                 print(f"Warning: Could not load config {config}: {config_error}")
+                print(f"Skipping config {config}, will continue with other configs")
         
         if not proof_pile_datasets:
             raise Exception("Could not load any Proof-Pile-2 configs")
