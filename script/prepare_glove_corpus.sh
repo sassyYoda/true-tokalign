@@ -21,7 +21,7 @@ export TOKENIZER_NAME="EleutherAI/pythia-1b"
 # Dataset names (can be overridden)
 export CULTURAX_DATASET="${CULTURAX_DATASET:-uonlp/CulturaX}"
 export STACK_DATASET="${STACK_DATASET:-bigcode/the-stack}"
-export PROOF_PILE_DATASET="${PROOF_PILE_DATASET:-EleutherAI/proof-pile-2}"
+export PROOF_PILE_DATASET="${PROOF_PILE_DATASET:-lehduong/proof-pile-2}"
 
 # Random seed
 export SEED=42

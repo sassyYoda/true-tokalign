@@ -263,8 +263,8 @@ def main():
     parser.add_argument(
         "--proof-pile-dataset",
         type=str,
-        default="EleutherAI/proof-pile-2",
-        help="Proof-Pile-2 dataset name on HuggingFace"
+        default="lehduong/proof-pile-2",
+        help="Proof-Pile-2 dataset name on HuggingFace (default: lehduong/proof-pile-2, Parquet format)"
     )
     
     args = parser.parse_args()
@@ -389,8 +389,9 @@ def main():
     try:
         print("\n" + "="*60)
         print("Loading Proof-Pile-2 dataset...")
-        # Try loading individual configs and combining
-        # First try streaming, fallback to non-streaming if zstd errors occur
+        print(f"Using dataset: {args.proof_pile_dataset} (Parquet format)")
+        # Try loading individual configs/subsets and combining
+        # Parquet format should avoid zstd decompression issues
         configs = ["arxiv", "open-web-math", "algebraic-stack"]
         proof_pile_datasets = []
         is_streaming_list = []
