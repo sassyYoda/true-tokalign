@@ -388,24 +388,48 @@ def main():
     # Proof-Pile-2 (30%)
     try:
         print("\n" + "="*60)
-        print("Loading Proof-Pile-2 dataset (streaming mode)...")
-        # Try loading individual configs and combining (avoids zstd issues with "default")
+        print("Loading Proof-Pile-2 dataset...")
+        # Try loading individual configs and combining
+        # First try streaming, fallback to non-streaming if zstd errors occur
         configs = ["arxiv", "open-web-math", "algebraic-stack"]
         proof_pile_datasets = []
+        is_streaming_list = []
         
         for config in configs:
             try:
-                print(f"Loading Proof-Pile-2 config: {config}...")
-                ds = load_dataset(
-                    args.proof_pile_dataset, 
-                    config,
-                    cache_dir=args.cache_dir, 
-                    streaming=True,
-                    split="train",
-                    trust_remote_code=True
-                )
-                proof_pile_datasets.append(ds)
-                print(f"Successfully loaded {config}")
+                print(f"Loading Proof-Pile-2 config: {config} (trying streaming first)...")
+                # Try streaming first
+                try:
+                    ds = load_dataset(
+                        args.proof_pile_dataset, 
+                        config,
+                        cache_dir=args.cache_dir, 
+                        streaming=True,
+                        split="train",
+                        trust_remote_code=True
+                    )
+                    # Test if streaming works by trying to get first example
+                    test_iter = iter(ds)
+                    next(test_iter)  # This will fail if zstd error occurs
+                    proof_pile_datasets.append(ds)
+                    is_streaming_list.append(True)
+                    print(f"Successfully loaded {config} (streaming mode)")
+                except Exception as stream_error:
+                    if "zstd" in str(stream_error).lower() or "decompress" in str(stream_error).lower():
+                        print(f"Streaming failed for {config} (zstd error), trying non-streaming...")
+                        ds = load_dataset(
+                            args.proof_pile_dataset, 
+                            config,
+                            cache_dir=args.cache_dir, 
+                            streaming=False,
+                            split="train",
+                            trust_remote_code=True
+                        )
+                        proof_pile_datasets.append(ds)
+                        is_streaming_list.append(False)
+                        print(f"Successfully loaded {config} (non-streaming mode)")
+                    else:
+                        raise
             except Exception as config_error:
                 print(f"Warning: Could not load config {config}: {config_error}")
         
@@ -419,7 +443,8 @@ def main():
         
         for i, ds in enumerate(proof_pile_datasets):
             texts, tokens = sample_from_dataset(
-                ds, tokens_per_config, tokenizer, f"Proof-Pile-2-{configs[i]}", seed=args.seed + 2 + i, is_streaming=True
+                ds, tokens_per_config, tokenizer, f"Proof-Pile-2-{configs[i]}", 
+                seed=args.seed + 2 + i, is_streaming=is_streaming_list[i]
             )
             all_proof_pile_texts.extend(texts)
             total_proof_pile_tokens += tokens
