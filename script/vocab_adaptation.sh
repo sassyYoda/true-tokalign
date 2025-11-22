@@ -1,12 +1,12 @@
 #!/bin/sh
-export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+export CUDA_VISIBLE_DEVICES=0  # Single GPU setup
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 export MAIN_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd ${MAIN_DIR}
 
-export GPUNUM=8
+export GPUNUM=1  # Single GPU
 export MASTER_PORT=16900
 
 export MODEL="1b"
