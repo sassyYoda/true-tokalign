@@ -28,7 +28,7 @@ from typing import Optional, Any, Dict, List, Optional
 from collections.abc import Mapping
 
 import datasets
-from datasets import load_dataset, load_metric
+from datasets import load_dataset, load_metric, DatasetDict
 
 import transformers
 from transformers import (
@@ -353,6 +353,19 @@ def prepare_dataset(tokenizer, data_args, model_args, training_args, logger):
         )
 
     if data_args.only_tokenize:
+        # Ensure validation split exists before saving
+        if "validation" not in tokenized_datasets.keys():
+            # Create validation split from train (5% default)
+            split_datasets = tokenized_datasets["train"].train_test_split(
+                test_size=data_args.validation_split_percentage / 100.0, 
+                seed=42
+            )
+            tokenized_datasets = DatasetDict({
+                "train": split_datasets["train"],
+                "validation": split_datasets["test"]
+            })
+            print(f"Created validation split: {len(tokenized_datasets['validation']):,} examples ({data_args.validation_split_percentage}%)")
+        
         # save tokenized_dataset
         tokenized_datasets.save_to_disk(data_args.dataset_path_in_disk)
         print("Tokenized dataset is saved to disk",data_args.dataset_path_in_disk)

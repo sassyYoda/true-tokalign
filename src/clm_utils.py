@@ -184,7 +184,15 @@ def create_datasets(tokenizer, args):
     # dataset = load_dataset(args.dataset_name, use_auth_token=True, num_proc=args.num_workers)
     dataset = load_from_disk(args.dataset_name)
     train_data = dataset["train"]
-    valid_data = dataset["test"] if "test" in dataset else dataset["validation"]
+    # Handle missing validation split - use a small portion of train if needed
+    if "test" in dataset:
+        valid_data = dataset["test"]
+    elif "validation" in dataset:
+        valid_data = dataset["validation"]
+    else:
+        # If no validation split exists, use a small portion of train data
+        print("Warning: No validation split found. Using a small portion of train data for validation.")
+        valid_data = train_data.select(range(min(1000, len(train_data))))
     print(f"Size of the train set: {len(train_data)}. Size of the validation set: {len(valid_data)}")
     chars_per_token = chars_token_ratio(train_data, tokenizer, args.dataset_text_field) if 'text' in train_data.features else 1
     print(f"The character to token ratio of the dataset is: {chars_per_token:.2f}")

@@ -81,10 +81,22 @@ def main():
     print(f"✓ Concatenated into {len(combined_dataset):,} total examples")
     print("")
     
-    # Create output directory structure
-    # Save as a DatasetDict with "train" key to match expected format
+    # Create train/validation split (5% validation, 95% train)
+    print("Creating train/validation split (5% validation)...")
+    split_dataset = combined_dataset.train_test_split(test_size=0.05, seed=42)
+    train_dataset = split_dataset["train"]
+    validation_dataset = split_dataset["test"]
+    
+    print(f"  Train examples: {len(train_dataset):,}")
+    print(f"  Validation examples: {len(validation_dataset):,}")
+    print("")
+    
+    # Create output directory structure with both train and validation splits
     from datasets import DatasetDict
-    output_dict = DatasetDict({"train": combined_dataset})
+    output_dict = DatasetDict({
+        "train": train_dataset,
+        "validation": validation_dataset
+    })
     
     print(f"Saving to {args.output_path}...")
     os.makedirs(os.path.dirname(args.output_path) if os.path.dirname(args.output_path) else ".", exist_ok=True)

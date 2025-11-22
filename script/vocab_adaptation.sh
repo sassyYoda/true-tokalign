@@ -84,8 +84,15 @@ accelerate launch \
     --finetune_embed_only True \
     --use_flash_attn True 2>&1 >$LOG_FILE
 
-# STAGE-2
-MODEL_NAME="${MODEL_DIR}/checkpoint-${NUM_STEPS}"
+# STAGE-2 (only run if STAGE-1 checkpoint exists)
+STAGE1_CHECKPOINT="${MAIN_DIR}/log/${MODEL}/${SEED}_${TGT}_S1/checkpoint-${NUM_STEPS}"
+if [ ! -d "${STAGE1_CHECKPOINT}" ]; then
+    echo "Error: STAGE-1 checkpoint not found at ${STAGE1_CHECKPOINT}"
+    echo "STAGE-1 must complete successfully before running STAGE-2."
+    exit 1
+fi
+
+MODEL_NAME="${STAGE1_CHECKPOINT}"
 LR=5e-5
 export TRAIN_START_IDX=2560000
 
@@ -97,6 +104,8 @@ MODEL_DIR="${MAIN_DIR}/log/$PREFIX"
 LOG_FILE="${MAIN_DIR}/log/${PREFIX}.log"
 
 mkdir -p $MODEL_DIR
+
+echo "Starting STAGE-2 training from checkpoint: ${MODEL_NAME}"
 
 accelerate launch \
     --config_file ${CONFIG_FILE} \
