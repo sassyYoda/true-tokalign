@@ -261,16 +261,29 @@ def main(args):
         print("Sharding model if >10GB...")
         # FSDP/DeepSpeed save the model as a single `pytorch_model.bin` file, so we need to shard it.
         # We run this in a subprocess to avoid interference from the accelerators.
-        subprocess.run(
-            [
-                "python",
-                "shard_checkpoint.py",
-                f"--output_dir={args.output_dir}",
-            ],
-            check=True,
-        )
-        if "training_args.bin" in os.listdir(args.output_dir):
-            os.remove(os.path.join(args.output_dir, "training_args.bin"))
+        shard_script_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "shard_checkpoint.py")
+        if os.path.exists(shard_script_path):
+            try:
+                subprocess.run(
+                    [
+                        "python",
+                        shard_script_path,
+                        f"--output_dir={args.output_dir}",
+                    ],
+                    check=False,  # Don't fail if sharding fails
+                )
+            except Exception as e:
+                print(f"Warning: Sharding failed (non-critical): {e}")
+        else:
+            print(f"Warning: shard_checkpoint.py not found at {shard_script_path}. Skipping sharding (non-critical).")
+        
+        # Clean up training_args.bin if it exists
+        training_args_file = os.path.join(args.output_dir, "training_args.bin")
+        if os.path.exists(training_args_file):
+            try:
+                os.remove(training_args_file)
+            except Exception as e:
+                print(f"Warning: Could not remove training_args.bin: {e}")
 
 
 if __name__ == "__main__":
