@@ -126,44 +126,34 @@ def load_opus_globalvoices(
     print(f"Loading OPUS Global Voices from HuggingFace (split: {split})...")
     
     try:
-        # Load dataset from HuggingFace
+        # Load dataset from HuggingFace using 'en-es' config for English-Spanish pairs
+        # Note: The dataset uses 'en-es' config (English-Spanish), but we'll extract both directions
         dataset = load_dataset(
             "sentence-transformers/parallel-sentences-global-voices",
-            lang1="es",
-            lang2="en",
+            "en-es",  # Config name for English-Spanish pairs
             split=split,
             cache_dir=cache_dir,
             trust_remote_code=True
         )
     except Exception as e:
         print(f"Error loading from HuggingFace: {e}")
-        print("Trying alternative dataset name...")
-        try:
-            # Alternative: try without lang parameters
-            dataset = load_dataset(
-                "sentence-transformers/parallel-sentences-global-voices",
-                split=split,
-                cache_dir=cache_dir,
-                trust_remote_code=True
-            )
-            # Filter for Spanish-English pairs
-            if "lang1" in dataset.column_names and "lang2" in dataset.column_names:
-                dataset = dataset.filter(lambda x: x["lang1"] == "es" and x["lang2"] == "en")
-        except Exception as e2:
-            raise Exception(f"Could not load OPUS Global Voices from HuggingFace: {e2}")
+        raise Exception(f"Could not load OPUS Global Voices from HuggingFace: {e}")
     
     # Extract Spanish and English sentences
+    # The 'en-es' config has English as sentence1 and Spanish as sentence2
     pairs = []
     for example in dataset:
         # Handle different possible field names
-        spanish = example.get("sentence1") or example.get("text1") or example.get("es") or ""
-        english = example.get("sentence2") or example.get("text2") or example.get("en") or ""
+        # For 'en-es' config: sentence1 is English, sentence2 is Spanish
+        english = example.get("sentence1") or example.get("text1") or example.get("en") or ""
+        spanish = example.get("sentence2") or example.get("text2") or example.get("es") or ""
         
         # Clean and validate
         if spanish and english:
             spanish = str(spanish).strip()
             english = str(english).strip()
             if len(spanish) > 0 and len(english) > 0:
+                # Store as (spanish, english) for consistency with our evaluation
                 pairs.append((spanish, english))
         
         if max_samples and len(pairs) >= max_samples:
