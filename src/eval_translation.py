@@ -168,13 +168,14 @@ def load_opus_globalvoices(
         raise Exception(f"Could not load OPUS Global Voices from HuggingFace: {e}")
     
     # Extract Spanish and English sentences
-    # The 'en-es' config has English as sentence1 and Spanish as sentence2
+    # The 'en-es' config has 'english' and 'non_english' fields
+    # 'non_english' is Spanish for the 'en-es' config
     pairs = []
-    for example in dataset:
-        # Handle different possible field names
-        # For 'en-es' config: sentence1 is English, sentence2 is Spanish
-        english = example.get("sentence1") or example.get("text1") or example.get("en") or ""
-        spanish = example.get("sentence2") or example.get("text2") or example.get("es") or ""
+    for i in range(len(dataset)):
+        example = dataset[i]
+        # Field names are 'english' and 'non_english'
+        english = example.get("english", "")
+        spanish = example.get("non_english", "")
         
         # Clean and validate
         if spanish and english:

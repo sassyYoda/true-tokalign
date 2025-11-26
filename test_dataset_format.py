@@ -36,18 +36,20 @@ try:
                 print(f"    {key}: {value}")
         
         print("\n3. Checking field mapping...")
-        sentence1 = first_example.get("sentence1", "")
-        sentence2 = first_example.get("sentence2", "")
+        english_field = first_example.get("english", "")
+        spanish_field = first_example.get("non_english", "")
         
-        print(f"  sentence1: {sentence1[:100]}...")
-        print(f"  sentence2: {sentence2[:100]}...")
+        print(f"  english field: {english_field[:100]}...")
+        print(f"  non_english field (Spanish): {spanish_field[:100]}...")
         
         print("\n4. Testing data extraction (as our code would do)...")
         # Simulate what our code does
         pairs = []
-        for i, example in enumerate(dataset[:5]):  # Just first 5
-            english = example.get("sentence1", "")
-            spanish = example.get("sentence2", "")
+        for i in range(min(5, len(dataset))):  # Just first 5
+            example = dataset[i]
+            # Field names are 'english' and 'non_english'
+            english = example.get("english", "")
+            spanish = example.get("non_english", "")
             
             if spanish and english:
                 spanish = str(spanish).strip()
