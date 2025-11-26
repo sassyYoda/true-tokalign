@@ -18,11 +18,9 @@ export MODEL_PATH="${MAIN_DIR}/log/${MODEL}/${SEED}_${TGT}_S2/checkpoint-${NUM_S
 export DATASET_SPLIT="test"  # Options: train, validation, test
 export MAX_SAMPLES=""  # Leave empty for all samples, or set a number like 1000
 export OUTPUT_DIR="${MAIN_DIR}/log/translation_eval/${MODEL}_${SEED}_${TGT}"
-export CACHE_DIR="${MAIN_DIR}/data/cache"  # Optional: specify cache directory
-export DATA_DIR="${MAIN_DIR}/data/GlobalVoices"  # Directory for OPUS Global Voices dataset
+export CACHE_DIR="${MAIN_DIR}/data/cache"  # Optional: specify cache directory for HuggingFace datasets
 export DEVICE="cuda"  # Options: cuda or cpu
 export DIRECTIONS="both"  # Options: both, es-en, en-es
-export NO_FORCE_DOWNLOAD=""  # Set to "--no_force_download" to use existing files (skip download)
 
 # Check if model checkpoint exists
 if [ ! -d "${MODEL_PATH}" ]; then
@@ -49,8 +47,7 @@ CMD="python src/eval_translation.py \
     --dataset_split ${DATASET_SPLIT} \
     --output_dir ${OUTPUT_DIR} \
     --device ${DEVICE} \
-    --directions ${DIRECTIONS} \
-    --data_dir ${DATA_DIR}"
+    --directions ${DIRECTIONS}"
 
 if [ -n "${MAX_SAMPLES}" ]; then
     CMD="${CMD} --max_samples ${MAX_SAMPLES}"
@@ -58,10 +55,6 @@ fi
 
 if [ -n "${CACHE_DIR}" ]; then
     CMD="${CMD} --cache_dir ${CACHE_DIR}"
-fi
-
-if [ -n "${NO_FORCE_DOWNLOAD}" ]; then
-    CMD="${CMD} ${NO_FORCE_DOWNLOAD}"
 fi
 
 # Run evaluation
