@@ -65,11 +65,18 @@ def convert2eval(
             if "input_ids" in sample2:
                 print(f"  - Sample token length: {len(sample2['input_ids'])}")
         print(f"\n{'='*70}")
-        print("REASON: Different tokenizers produce different token counts for the same text.")
-        print("When grouped into fixed-size chunks and filtered, this results in different")
-        print("numbers of valid examples. This is expected behavior.")
+        print("POSSIBLE CAUSES:")
+        print("1. Datasets were created with old code that concatenated batches")
+        print("2. Different filtering removed different examples (empty/too long)")
+        print("3. Datasets were created from different source corpora")
+        print("\nWith the updated process_dataset.py, each example should correspond")
+        print("to the same original text (variable-length chunks, one per example).")
         print(f"{'='*70}\n")
-        print(f"Will process only the first {min(len1, len2):,} aligned examples.")
+        print(f"Will process only the first {min(len1, len2):,} examples.")
+        if len1 == len2:
+            print("✓ Datasets have matching lengths - alignment should be preserved!")
+        else:
+            print("⚠ Length mismatch - ensure datasets were created with updated code.")
     
     total_examples = min(max_line, len1, len2)
     print(f"Processing {total_examples:,} aligned examples (min length: {min_line_len})...")

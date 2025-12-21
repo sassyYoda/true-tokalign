@@ -352,6 +352,13 @@ def prepare_dataset(tokenizer, data_args, model_args, training_args, logger):
             desc="Running tokenizer on dataset",
         )
 
+    # If only_tokenize is True, save and return early without grouping
+    # This preserves perfect alignment: one example per original text
+    if data_args.only_tokenize:
+        tokenized_datasets.save_to_disk(data_args.dataset_path_in_disk)
+        print("Tokenized dataset is saved to disk", data_args.dataset_path_in_disk)
+        return tokenized_datasets
+
     if data_args.block_size is None:
         block_size = tokenizer.model_max_length
         if block_size > 1024:
@@ -368,23 +375,25 @@ def prepare_dataset(tokenizer, data_args, model_args, training_args, logger):
             )
         block_size = min(data_args.block_size, tokenizer.model_max_length)
 
-    # Main data processing function that will concatenate all texts from our dataset and generate chunks of block_size.
+    # Main data processing function that keeps each example as a separate variable-length chunk.
+    # This preserves alignment: example i in dataset 1 corresponds to example i in dataset 2.
     def group_texts(examples):
-        # Concatenate all texts.
-        concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
-        total_length = len(concatenated_examples[list(examples.keys())[0]])
-        # We drop the small remainder, we could add padding if the model supported it instead of this drop, you can
-        # customize this part to your needs.
-        if total_length >= block_size:
-            total_length = (total_length // block_size) * block_size
-        # Split by chunks of max_len.
-        result = {
-            k: [t[i : i + block_size] for i in range(0, total_length, block_size)]
-            for k, t in concatenated_examples.items()
-        }
-
-        # without labels for saving space
-        # result["labels"] = result["input_ids"].copy()
+        # Process each example separately - keep as one chunk per example (variable length)
+        result = {k: [] for k in examples.keys()}
+        
+        # Get the number of examples in this batch
+        num_examples = len(examples[list(examples.keys())[0]])
+        
+        for i in range(num_examples):
+            # Keep each example as a single chunk (variable length)
+            # Optionally truncate to block_size if the example is too long
+            for k in examples.keys():
+                tokens = examples[k][i]
+                # Truncate if longer than block_size, but keep variable length otherwise
+                if len(tokens) > block_size:
+                    tokens = tokens[:block_size]
+                result[k].append(tokens)
+        
         return result
     
     features = Features({
@@ -392,9 +401,9 @@ def prepare_dataset(tokenizer, data_args, model_args, training_args, logger):
         "attention_mask": Sequence(Value("bool")),
     })
 
-    # Note that with `batched=True`, this map processes 1,000 texts together, so group_texts throws away a remainder
-    # for each of those groups of 1,000 texts. You can adjust that batch_size here but a higher value might be slower
-    # to preprocess.
+    # Note: With `batched=True`, this processes batches of examples, but group_texts keeps each example
+    # as a separate variable-length chunk to preserve alignment between different tokenizers.
+    # This ensures that example i in dataset 1 corresponds to the same original text as example i in dataset 2.
     #
     # To speed up this part, we use multiprocessing. See the documentation of the map method for more information:
     # https://huggingface.co/docs/datasets/package_reference/main_classes.html#datasets.Dataset.map
@@ -409,11 +418,19 @@ def prepare_dataset(tokenizer, data_args, model_args, training_args, logger):
             desc=f"Grouping texts in chunks of {block_size}",
         )
 
-    lm_datasets['train'] = lm_datasets['train'].filter(lambda example: len(example['input_ids']) == block_size, num_proc=data_args.preprocessing_num_workers)
+    # Filter to keep only examples with reasonable length (at least 1 token, at most block_size)
+    # This preserves variable-length chunks while removing empty or overly long examples
+    lm_datasets['train'] = lm_datasets['train'].filter(
+        lambda example: len(example['input_ids']) > 0 and len(example['input_ids']) <= block_size, 
+        num_proc=data_args.preprocessing_num_workers
+    )
     
     # Ensure validation split exists
     if "validation" in lm_datasets:
-        lm_datasets['validation'] = lm_datasets['validation'].filter(lambda example: len(example['input_ids']) == block_size, num_proc=data_args.preprocessing_num_workers)
+        lm_datasets['validation'] = lm_datasets['validation'].filter(
+            lambda example: len(example['input_ids']) > 0 and len(example['input_ids']) <= block_size,
+            num_proc=data_args.preprocessing_num_workers
+        )
     elif "validation" not in lm_datasets.keys():
         # Create validation split from train (5% default)
         split_datasets = lm_datasets["train"].train_test_split(
@@ -427,11 +444,7 @@ def prepare_dataset(tokenizer, data_args, model_args, training_args, logger):
         print(f"Created validation split: {len(lm_datasets['validation']):,} examples ({data_args.validation_split_percentage}%)")
 
     # Save dataset
-    if data_args.only_tokenize:
-        print("Tokenized and grouped dataset is saved to disk", data_args.dataset_path_in_disk)
-    else:
-        print("Processed dataset is saved to disk", data_args.dataset_path_in_disk)
-    
+    print("Processed dataset is saved to disk", data_args.dataset_path_in_disk)
     lm_datasets.save_to_disk(data_args.dataset_path_in_disk)
     
     return lm_datasets
