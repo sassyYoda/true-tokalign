@@ -80,19 +80,6 @@ def clean_translation_output(translation: str, prompt: str) -> str:
     if match:
         translation = match.group(1).strip()
     
-    # Remove repetitive patterns - if same phrase repeats 3+ times, take first occurrence
-    words = translation.split()
-    if len(words) > 10:
-        # Check for repetition in first 50 words
-        first_50 = ' '.join(words[:50])
-        # Simple heuristic: if a 5-word phrase repeats, it's likely a loop
-        for i in range(len(words) - 10):
-            phrase = ' '.join(words[i:i+5])
-            if first_50.count(phrase) >= 3:
-                # Take everything up to the first repetition
-                translation = ' '.join(words[:i+5])
-                break
-    
     # Remove language labels (Spanish:, French:, Italian:, etc.)
     translation = re.sub(r'\b(Spanish|French|Italian|German|Portuguese|Dutch|Polish|Danish|Russian):\s*', '', translation, flags=re.IGNORECASE)
     
@@ -102,18 +89,39 @@ def clean_translation_output(translation: str, prompt: str) -> str:
     # Remove excessive whitespace and newlines
     translation = ' '.join(translation.split())
     
-    # Stop at common sentence endings if there's excessive repetition
-    # If we see the same sentence structure repeating, truncate
+    # Detect and remove repetitive loops - if same phrase repeats, take first occurrence
+    words = translation.split()
+    if len(words) > 15:
+        # Check for repetition: if a 6-word phrase appears 3+ times, it's likely a loop
+        for i in range(min(30, len(words) - 6)):
+            phrase = ' '.join(words[i:i+6])
+            # Count occurrences of this phrase in the text
+            phrase_count = translation.count(phrase)
+            if phrase_count >= 3:
+                # Take everything up to where the repetition starts
+                translation = ' '.join(words[:i+6])
+                break
+    
+    # Stop at repetitive sentences - if sentences repeat, truncate early
     sentences = re.split(r'[.!?]\s+', translation)
-    if len(sentences) > 1:
-        # Check if first sentence repeats
+    if len(sentences) > 2:
+        # Check if sentences are repeating
         first_sent = sentences[0]
-        if first_sent and len(first_sent) > 10:
-            # Count how many sentences start similarly
-            similar_count = sum(1 for s in sentences[1:6] if s.startswith(first_sent[:20]))
+        if first_sent and len(first_sent) > 15:
+            # Count how many sentences start similarly (first 15 chars)
+            similar_count = sum(1 for s in sentences[1:min(5, len(sentences))] 
+                              if len(s) > 15 and s[:15] == first_sent[:15])
             if similar_count >= 2:
                 # Just return first sentence
                 translation = sentences[0] + '.'
+    
+    # Additional check: if translation is very long (>200 words) and seems repetitive, truncate
+    if len(words) > 200:
+        # Look for natural sentence breaks and take first few sentences
+        sentences = re.split(r'[.!?]\s+', translation)
+        if len(sentences) > 3:
+            # Take first 3 sentences max
+            translation = '. '.join(sentences[:3]) + '.'
     
     return translation.strip()
 

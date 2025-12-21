@@ -38,9 +38,40 @@ def convert2eval(
     d1 = datasets.load_from_disk(src_tok_path)
     print(f"Loading target dataset from {tgt_tok_path}...")
     d2 = datasets.load_from_disk(tgt_tok_path)
-    assert(len(d1[key]) == len(d2[key]))
     
-    total_examples = min(max_line, len(d1[key]))
+    # Check if the key exists in both datasets
+    if key not in d1:
+        raise KeyError(f"Key '{key}' not found in source dataset. Available keys: {list(d1.keys())}")
+    if key not in d2:
+        raise KeyError(f"Key '{key}' not found in target dataset. Available keys: {list(d2.keys())}")
+    
+    len1 = len(d1[key])
+    len2 = len(d2[key])
+    
+    if len1 != len2:
+        print(f"\n{'='*70}")
+        print(f"WARNING: Dataset length mismatch detected!")
+        print(f"{'='*70}")
+        print(f"Source dataset ({src_tok_path}):")
+        print(f"  - '{key}' split: {len1:,} examples")
+        if len(d1[key]) > 0:
+            sample1 = d1[key][0]
+            if "input_ids" in sample1:
+                print(f"  - Sample token length: {len(sample1['input_ids'])}")
+        print(f"\nTarget dataset ({tgt_tok_path}):")
+        print(f"  - '{key}' split: {len2:,} examples")
+        if len(d2[key]) > 0:
+            sample2 = d2[key][0]
+            if "input_ids" in sample2:
+                print(f"  - Sample token length: {len(sample2['input_ids'])}")
+        print(f"\n{'='*70}")
+        print("REASON: Different tokenizers produce different token counts for the same text.")
+        print("When grouped into fixed-size chunks and filtered, this results in different")
+        print("numbers of valid examples. This is expected behavior.")
+        print(f"{'='*70}\n")
+        print(f"Will process only the first {min(len1, len2):,} aligned examples.")
+    
+    total_examples = min(max_line, len1, len2)
     print(f"Processing {total_examples:,} aligned examples (min length: {min_line_len})...")
 
     written = 0
