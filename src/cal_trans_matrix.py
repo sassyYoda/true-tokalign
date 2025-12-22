@@ -3,6 +3,7 @@ import json
 from tqdm import tqdm
 import random
 import argparse
+import os
 
 def load_glove_model(File):
     print("Loading Glove Model")
@@ -166,6 +167,11 @@ if __name__ == '__main__':
         td[tid] = int(lid)
 
     print(f"{supl_id} ids are suppled with gold transition dictionary.")
+
+    # Create output directory if it doesn't exist
+    output_dir = os.path.dirname(tgt_path)
+    if output_dir:  # Only create directory if path contains a directory component
+        os.makedirs(output_dir, exist_ok=True)
 
     with open(tgt_path, "w") as f:
         json.dump(td, f, indent="\t")
