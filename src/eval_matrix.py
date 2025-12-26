@@ -3,10 +3,11 @@ from nltk.translate.bleu_score import sentence_bleu
 from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer
 import argparse
-from bert_score import score as bert_score
+from bert_score import BERTScorer
 from tqdm import tqdm
 import os
 import torch
+import numpy as np
 
 def read_tsv(file_path):
     res = []
@@ -90,17 +91,17 @@ def eval_bert_score(
     source_tokenizer_path="EleutherAI/pythia-1b",
     target_tokenizer_path=None,
     model_name="microsoft/deberta-base-mnli",
-    batch_size=8,
+    batch_size=32,
     device="cuda",
     max_examples=None,
     **kwargs
 ):
     """
-    Evaluate using BERTScore:
+    Optimized BERTScore evaluation using BERTScorer class (load model once, reuse):
     1. Map target token IDs to source token IDs using alignment matrix
     2. De-tokenize mapped source token IDs → recovered text C'
     3. De-tokenize original source token IDs → original text C
-    4. Compare C' and C using BERTScore
+    4. Compare C' and C using BERTScore with efficient batching
     """
     source_tok = AutoTokenizer.from_pretrained(source_tokenizer_path)
     
@@ -111,154 +112,184 @@ def eval_bert_score(
     td = trans
     
     # Limit number of examples if specified (for testing/debugging)
-    max_examples = kwargs.get('max_examples', None)
     if max_examples and max_examples > 0:
         eval_data = eval_data[:max_examples]
         print(f"Limiting evaluation to {max_examples} examples for testing/debugging")
 
-    # Collect recovered texts (C') and original texts (C)
+    # Vectorized de-tokenization for better performance
+    print("De-tokenizing texts for BERTScore evaluation...")
     recovered_texts = []  # C': de-tokenized from mapped source token IDs
     original_texts = []   # C: de-tokenized from original source token IDs
     
-    print("De-tokenizing texts for BERTScore evaluation...")
-    for s in tqdm(eval_data, desc="Processing examples"):
-        src_token_ids, tgt_token_ids = s[0], s[1]
+    # Batch decode for efficiency
+    batch_decode_size = 100
+    for batch_start in tqdm(range(0, len(eval_data), batch_decode_size), desc="De-tokenizing"):
+        batch_end = min(batch_start + batch_decode_size, len(eval_data))
+        batch_data = eval_data[batch_start:batch_end]
         
-        # Map target token IDs to source token IDs using alignment matrix
-        mapped_src_token_ids = [int(td[tid]) for tid in tgt_token_ids]
+        # Process batch
+        batch_recovered_ids = []
+        batch_original_ids = []
         
-        # De-tokenize mapped source token IDs → recovered text C'
-        recovered_text = source_tok.decode(mapped_src_token_ids, skip_special_tokens=True)
-        recovered_texts.append(recovered_text)
+        for s in batch_data:
+            src_token_ids, tgt_token_ids = s[0], s[1]
+            # Map target token IDs to source token IDs using alignment matrix
+            mapped_src_token_ids = [int(td[tid]) for tid in tgt_token_ids]
+            batch_recovered_ids.append(mapped_src_token_ids)
+            batch_original_ids.append([int(sid) for sid in src_token_ids])
         
-        # De-tokenize original source token IDs → original text C
-        original_src_token_ids = [int(sid) for sid in src_token_ids]
-        original_text = source_tok.decode(original_src_token_ids, skip_special_tokens=True)
-        original_texts.append(original_text)
+        # Batch decode (more efficient than individual decodes)
+        batch_recovered = source_tok.batch_decode(batch_recovered_ids, skip_special_tokens=True)
+        batch_original = source_tok.batch_decode(batch_original_ids, skip_special_tokens=True)
+        
+        recovered_texts.extend(batch_recovered)
+        original_texts.extend(batch_original)
     
     print(f"Computing BERTScore for {len(recovered_texts)} examples...")
     
     # Clear GPU cache before starting
     if device == "cuda" and torch.cuda.is_available():
         torch.cuda.empty_cache()
-        if torch.cuda.is_available():
-            print(f"GPU memory before BERTScore: {torch.cuda.memory_allocated()/1024**3:.2f} GB allocated, {torch.cuda.memory_reserved()/1024**3:.2f} GB reserved")
+        print(f"GPU memory before BERTScore: {torch.cuda.memory_allocated()/1024**3:.2f} GB allocated")
     
-    # Process in very small chunks to avoid memory issues
-    # Start with very small chunks (1-2 examples) and increase if successful
-    chunk_size = max(1, min(batch_size, 4))  # Process 1-4 examples at a time
+    # Use BERTScorer class - load model ONCE and reuse (much more efficient!)
+    print(f"Loading BERTScore model: {model_name} on {device}...")
+    try:
+        scorer = BERTScorer(
+            model_type=model_name,
+            lang='en',
+            device=device,
+            batch_size=batch_size,  # Use larger batch size since model is loaded once
+            rescale_with_baseline=True,
+            nthreads=4 if device == "cpu" else 1  # Use multiple threads on CPU
+        )
+        print("Model loaded successfully!")
+    except Exception as e:
+        print(f"Failed to load model on {device}: {e}")
+        if device == "cuda":
+            print("Falling back to CPU...")
+            device = "cpu"
+            scorer = BERTScorer(
+                model_type=model_name,
+                lang='en',
+                device="cpu",
+                batch_size=batch_size,
+                rescale_with_baseline=True,
+                nthreads=4
+            )
+        else:
+            raise
+    
+    # Process in larger batches now that model is loaded once
+    # Use adaptive batch size based on available memory
+    effective_batch_size = batch_size
     all_precision = []
     all_recall = []
     all_f1 = []
     
-    num_chunks = (len(recovered_texts) + chunk_size - 1) // chunk_size
-    print(f"Processing {len(recovered_texts)} examples in {num_chunks} chunks of {chunk_size} examples each...")
-    print(f"Using device: {device}, model: {model_name}, batch_size: {batch_size}")
+    num_batches = (len(recovered_texts) + effective_batch_size - 1) // effective_batch_size
+    print(f"Processing {len(recovered_texts)} examples in {num_batches} batches of ~{effective_batch_size} examples each...")
     
-    successful_chunks = 0
-    failed_chunks = 0
+    successful_batches = 0
+    failed_batches = 0
     
-    for i in tqdm(range(0, len(recovered_texts), chunk_size), desc="BERTScore chunks"):
-        chunk_recovered = recovered_texts[i:i+chunk_size]
-        chunk_original = original_texts[i:i+chunk_size]
+    for i in tqdm(range(0, len(recovered_texts), effective_batch_size), desc="BERTScore batches"):
+        batch_recovered = recovered_texts[i:i+effective_batch_size]
+        batch_original = original_texts[i:i+effective_batch_size]
         
-        # Clear GPU cache before each chunk
+        # Clear GPU cache before each batch
         if device == "cuda" and torch.cuda.is_available():
             torch.cuda.empty_cache()
         
         try:
-            # Compute BERTScore for this chunk with minimal memory usage
-            P, R, F1 = bert_score(
-                chunk_recovered,
-                chunk_original,
-                model_type=model_name,
-                batch_size=1,  # Use batch_size=1 for minimal memory
-                device=device,
-                verbose=False,
-                lang='en',  # Specify language to avoid auto-detection overhead
-                rescale_with_baseline=True  # Use baseline rescaling (more memory efficient)
+            # Use scorer.score() - much more efficient than calling bert_score() repeatedly
+            P, R, F1 = scorer.score(
+                batch_recovered,
+                batch_original,
+                verbose=False
             )
             
-            # Move to CPU immediately and delete GPU tensors
-            P_cpu = P.cpu()
-            R_cpu = R.cpu()
-            F1_cpu = F1.cpu()
+            # Convert to numpy arrays for efficient processing
+            P_np = P.cpu().numpy() if isinstance(P, torch.Tensor) else np.array(P)
+            R_np = R.cpu().numpy() if isinstance(R, torch.Tensor) else np.array(R)
+            F1_np = F1.cpu().numpy() if isinstance(F1, torch.Tensor) else np.array(F1)
             
-            # Collect scores
-            all_precision.extend(P_cpu.tolist())
-            all_recall.extend(R_cpu.tolist())
-            all_f1.extend(F1_cpu.tolist())
+            # Extend lists efficiently
+            all_precision.extend(P_np.tolist())
+            all_recall.extend(R_np.tolist())
+            all_f1.extend(F1_np.tolist())
             
             # Delete tensors explicitly
-            del P, R, F1, P_cpu, R_cpu, F1_cpu
+            del P, R, F1, P_np, R_np, F1_np
             
-            successful_chunks += 1
+            successful_batches += 1
             
-            # Clear GPU cache after each chunk
+            # Clear GPU cache after each batch
             if device == "cuda" and torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 
         except torch.cuda.OutOfMemoryError as e:
-            failed_chunks += 1
-            print(f"\nCUDA OOM at chunk {i//chunk_size + 1}/{num_chunks}: {e}")
+            failed_batches += 1
+            print(f"\nCUDA OOM at batch {i//effective_batch_size + 1}/{num_batches}")
             
-            # Try with CPU as fallback
-            if device == "cuda":
-                print(f"Attempting CPU fallback for chunk {i//chunk_size + 1}...")
+            # Reduce batch size and retry
+            if effective_batch_size > 1:
+                effective_batch_size = max(1, effective_batch_size // 2)
+                print(f"Reducing batch size to {effective_batch_size} and retrying...")
+                torch.cuda.empty_cache()
+                # Retry with smaller batch
                 try:
-                    torch.cuda.empty_cache()
-                    P, R, F1 = bert_score(
-                        chunk_recovered,
-                        chunk_original,
-                        model_type=model_name,
-                        batch_size=1,
-                        device="cpu",  # Fallback to CPU
-                        verbose=False,
-                        lang='en',
-                        rescale_with_baseline=True
+                    P, R, F1 = scorer.score(
+                        batch_recovered[:effective_batch_size],
+                        batch_original[:effective_batch_size],
+                        verbose=False
                     )
-                    all_precision.extend(P.tolist())
-                    all_recall.extend(R.tolist())
-                    all_f1.extend(F1.tolist())
+                    all_precision.extend(P.cpu().numpy().tolist())
+                    all_recall.extend(R.cpu().numpy().tolist())
+                    all_f1.extend(F1.cpu().numpy().tolist())
                     del P, R, F1
-                    successful_chunks += 1
-                    print(f"CPU fallback successful for chunk {i//chunk_size + 1}")
-                except Exception as e2:
-                    print(f"CPU fallback also failed: {e2}")
-                    all_precision.extend([0.0] * len(chunk_recovered))
-                    all_recall.extend([0.0] * len(chunk_recovered))
-                    all_f1.extend([0.0] * len(chunk_recovered))
+                    successful_batches += 1
+                except:
+                    all_precision.extend([0.0] * len(batch_recovered))
+                    all_recall.extend([0.0] * len(batch_recovered))
+                    all_f1.extend([0.0] * len(batch_recovered))
             else:
-                all_precision.extend([0.0] * len(chunk_recovered))
-                all_recall.extend([0.0] * len(chunk_recovered))
-                all_f1.extend([0.0] * len(chunk_recovered))
+                all_precision.extend([0.0] * len(batch_recovered))
+                all_recall.extend([0.0] * len(batch_recovered))
+                all_f1.extend([0.0] * len(batch_recovered))
                 
         except Exception as e:
-            failed_chunks += 1
-            print(f"\nWarning: Failed to process chunk {i//chunk_size + 1}/{num_chunks}: {e}")
-            all_precision.extend([0.0] * len(chunk_recovered))
-            all_recall.extend([0.0] * len(chunk_recovered))
-            all_f1.extend([0.0] * len(chunk_recovered))
+            failed_batches += 1
+            print(f"\nWarning: Failed to process batch {i//effective_batch_size + 1}/{num_batches}: {e}")
+            all_precision.extend([0.0] * len(batch_recovered))
+            all_recall.extend([0.0] * len(batch_recovered))
+            all_f1.extend([0.0] * len(batch_recovered))
             
             # Clear cache on any error
             if device == "cuda" and torch.cuda.is_available():
                 torch.cuda.empty_cache()
             continue
     
-    print(f"\nBERTScore processing complete: {successful_chunks} successful chunks, {failed_chunks} failed chunks")
+    # Clean up scorer
+    del scorer
+    if device == "cuda" and torch.cuda.is_available():
+        torch.cuda.empty_cache()
     
-    # Calculate averages (only from successful examples)
-    successful_scores = [f for f in all_f1 if f > 0.0]
+    print(f"\nBERTScore processing complete: {successful_batches} successful batches, {failed_batches} failed batches")
+    
+    # Calculate averages using numpy for efficiency (only from successful examples)
+    all_f1_np = np.array(all_f1)
+    successful_mask = all_f1_np > 0.0
+    successful_scores = all_f1_np[successful_mask]
     
     if len(successful_scores) > 0:
-        # Calculate averages only from successful examples
-        successful_indices = [i for i, f in enumerate(all_f1) if f > 0.0]
-        successful_precision = [all_precision[i] for i in successful_indices]
-        successful_recall = [all_recall[i] for i in successful_indices]
+        # Use numpy for efficient calculation
+        all_precision_np = np.array(all_precision)
+        all_recall_np = np.array(all_recall)
         
-        avg_precision = sum(successful_precision) / len(successful_precision)
-        avg_recall = sum(successful_recall) / len(successful_recall)
-        avg_f1 = sum(successful_scores) / len(successful_scores)
+        avg_precision = float(np.mean(all_precision_np[successful_mask]))
+        avg_recall = float(np.mean(all_recall_np[successful_mask]))
+        avg_f1 = float(np.mean(successful_scores))
         
         print(f"\nBERTScore results (from {len(successful_scores)}/{len(recovered_texts)} successful examples):")
         print(f"BERTScore Precision: {avg_precision:.6f}")
@@ -270,7 +301,7 @@ def eval_bert_score(
             "recall": avg_recall,
             "f1": avg_f1,
             "num_examples": len(recovered_texts),
-            "num_successful": len(successful_scores),
+            "num_successful": int(len(successful_scores)),
             "precision_scores": all_precision,
             "recall_scores": all_recall,
             "f1_scores": all_f1
@@ -294,7 +325,7 @@ if __name__ == '__main__':
     parser.add_argument("-w", "--bleu-weights", type=str, default="1,0,0,0")
     parser.add_argument("--output-dir", type=str, default=None,
                        help="Directory to save evaluation results JSON (default: same as eval_file_path parent)")
-    parser.add_argument("--batch-size", type=int, default=8, help="Batch size for BERTScore (default: 8, reduce if OOM)")
+    parser.add_argument("--batch-size", type=int, default=32, help="Batch size for BERTScore (default: 32, model loaded once so larger batches are efficient)")
     parser.add_argument("--device", type=str, default="cuda", help="Device for BERTScore (cuda/cpu)")
     parser.add_argument("--max-examples", type=int, default=None, help="Maximum number of examples to evaluate (for testing/debugging)")
 
