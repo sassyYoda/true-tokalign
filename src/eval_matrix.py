@@ -90,7 +90,7 @@ def eval_bert_score(
     eval_file_path="./data/pretrain-dataset/pythia-2-qwen2-7b-MX1K-eval",
     source_tokenizer_path="EleutherAI/pythia-1b",
     target_tokenizer_path=None,
-    model_name="microsoft/deberta-base-mnli",
+    model_name="roberta-base",
     batch_size=32,
     device="cuda",
     max_examples=None,
@@ -153,36 +153,73 @@ def eval_bert_score(
         print(f"GPU memory before BERTScore: {torch.cuda.memory_allocated()/1024**3:.2f} GB allocated")
     
     # Use BERTScorer class - load model ONCE and reuse (much more efficient!)
+    # Try CPU first if GPU memory is limited, or use a smaller model
     print(f"Loading BERTScore model: {model_name} on {device}...")
+    
+    # Check GPU memory availability
+    if device == "cuda" and torch.cuda.is_available():
+        gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
+        print(f"GPU memory available: {gpu_memory_gb:.2f} GB")
+        
+        # If GPU has less than 20GB, use CPU or smaller model
+        if gpu_memory_gb < 20:
+            print(f"GPU memory limited ({gpu_memory_gb:.2f} GB). Using CPU for better reliability...")
+            device = "cpu"
+    
+    scorer = None
     try:
+        # Start with smaller batch size for initial load
+        initial_batch_size = min(batch_size, 8)
         scorer = BERTScorer(
             model_type=model_name,
             lang='en',
             device=device,
-            batch_size=batch_size,  # Use larger batch size since model is loaded once
+            batch_size=initial_batch_size,
             rescale_with_baseline=True,
             nthreads=4 if device == "cpu" else 1  # Use multiple threads on CPU
         )
-        print("Model loaded successfully!")
+        print(f"Model loaded successfully on {device}!")
     except Exception as e:
         print(f"Failed to load model on {device}: {e}")
         if device == "cuda":
             print("Falling back to CPU...")
             device = "cpu"
-            scorer = BERTScorer(
-                model_type=model_name,
-                lang='en',
-                device="cpu",
-                batch_size=batch_size,
-                rescale_with_baseline=True,
-                nthreads=4
-            )
+            try:
+                scorer = BERTScorer(
+                    model_type=model_name,
+                    lang='en',
+                    device="cpu",
+                    batch_size=min(batch_size, 16),
+                    rescale_with_baseline=True,
+                    nthreads=4
+                )
+                print("Model loaded successfully on CPU!")
+            except Exception as e2:
+                print(f"Failed to load on CPU too: {e2}")
+                # Try with an even smaller model
+                if model_name != "distilbert-base-uncased":
+                    print("Trying with distilbert-base-uncased (smallest model)...")
+                    model_name = "distilbert-base-uncased"
+                    scorer = BERTScorer(
+                        model_type=model_name,
+                        lang='en',
+                        device="cpu",
+                        batch_size=16,
+                        rescale_with_baseline=True,
+                        nthreads=4
+                    )
+                else:
+                    raise
         else:
             raise
     
-    # Process in larger batches now that model is loaded once
-    # Use adaptive batch size based on available memory
-    effective_batch_size = batch_size
+    # Process in batches - start conservative and adapt
+    # Use smaller initial batch size, especially for GPU
+    if device == "cuda":
+        effective_batch_size = min(batch_size, 8)  # Start smaller on GPU
+    else:
+        effective_batch_size = min(batch_size, 16)  # Can use larger batches on CPU
+    
     all_precision = []
     all_recall = []
     all_f1 = []
@@ -192,6 +229,8 @@ def eval_bert_score(
     
     successful_batches = 0
     failed_batches = 0
+    consecutive_failures = 0
+    max_consecutive_failures = 3
     
     for i in tqdm(range(0, len(recovered_texts), effective_batch_size), desc="BERTScore batches"):
         batch_recovered = recovered_texts[i:i+effective_batch_size]
@@ -201,74 +240,101 @@ def eval_bert_score(
         if device == "cuda" and torch.cuda.is_available():
             torch.cuda.empty_cache()
         
-        try:
-            # Use scorer.score() - much more efficient than calling bert_score() repeatedly
-            P, R, F1 = scorer.score(
-                batch_recovered,
-                batch_original,
-                verbose=False
-            )
-            
-            # Convert to numpy arrays for efficient processing
-            P_np = P.cpu().numpy() if isinstance(P, torch.Tensor) else np.array(P)
-            R_np = R.cpu().numpy() if isinstance(R, torch.Tensor) else np.array(R)
-            F1_np = F1.cpu().numpy() if isinstance(F1, torch.Tensor) else np.array(F1)
-            
-            # Extend lists efficiently
-            all_precision.extend(P_np.tolist())
-            all_recall.extend(R_np.tolist())
-            all_f1.extend(F1_np.tolist())
-            
-            # Delete tensors explicitly
-            del P, R, F1, P_np, R_np, F1_np
-            
-            successful_batches += 1
-            
-            # Clear GPU cache after each batch
-            if device == "cuda" and torch.cuda.is_available():
-                torch.cuda.empty_cache()
+        batch_success = False
+        retry_batch_size = effective_batch_size
+        
+        # Retry with progressively smaller batches if needed
+        while retry_batch_size >= 1 and not batch_success:
+            try:
+                # Process subset if retrying with smaller size
+                if retry_batch_size < effective_batch_size:
+                    current_recovered = batch_recovered[:retry_batch_size]
+                    current_original = batch_original[:retry_batch_size]
+                else:
+                    current_recovered = batch_recovered
+                    current_original = batch_original
                 
-        except torch.cuda.OutOfMemoryError as e:
-            failed_batches += 1
-            print(f"\nCUDA OOM at batch {i//effective_batch_size + 1}/{num_batches}")
-            
-            # Reduce batch size and retry
-            if effective_batch_size > 1:
-                effective_batch_size = max(1, effective_batch_size // 2)
-                print(f"Reducing batch size to {effective_batch_size} and retrying...")
-                torch.cuda.empty_cache()
-                # Retry with smaller batch
-                try:
-                    P, R, F1 = scorer.score(
-                        batch_recovered[:effective_batch_size],
-                        batch_original[:effective_batch_size],
-                        verbose=False
-                    )
-                    all_precision.extend(P.cpu().numpy().tolist())
-                    all_recall.extend(R.cpu().numpy().tolist())
-                    all_f1.extend(F1.cpu().numpy().tolist())
-                    del P, R, F1
-                    successful_batches += 1
-                except:
+                # Use scorer.score() - much more efficient than calling bert_score() repeatedly
+                P, R, F1 = scorer.score(
+                    current_recovered,
+                    current_original,
+                    verbose=False
+                )
+                
+                # Convert to numpy arrays for efficient processing
+                P_np = P.cpu().numpy() if isinstance(P, torch.Tensor) else np.array(P)
+                R_np = R.cpu().numpy() if isinstance(R, torch.Tensor) else np.array(R)
+                F1_np = F1.cpu().numpy() if isinstance(F1, torch.Tensor) else np.array(F1)
+                
+                # Extend lists efficiently
+                all_precision.extend(P_np.tolist())
+                all_recall.extend(R_np.tolist())
+                all_f1.extend(F1_np.tolist())
+                
+                # Fill remaining with zeros if we processed fewer than expected
+                if retry_batch_size < len(batch_recovered):
+                    remaining = len(batch_recovered) - retry_batch_size
+                    all_precision.extend([0.0] * remaining)
+                    all_recall.extend([0.0] * remaining)
+                    all_f1.extend([0.0] * remaining)
+                
+                # Delete tensors explicitly
+                del P, R, F1, P_np, R_np, F1_np
+                
+                successful_batches += 1
+                batch_success = True
+                consecutive_failures = 0
+                
+                # Clear GPU cache after each batch
+                if device == "cuda" and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    
+            except torch.cuda.OutOfMemoryError as e:
+                consecutive_failures += 1
+                if retry_batch_size > 1:
+                    retry_batch_size = max(1, retry_batch_size // 2)
+                    print(f"\nCUDA OOM at batch {i//effective_batch_size + 1}/{num_batches}, reducing to batch_size={retry_batch_size}...")
+                    torch.cuda.empty_cache()
+                else:
+                    # Even batch_size=1 failed, skip this batch
+                    print(f"\nCUDA OOM even with batch_size=1, skipping batch {i//effective_batch_size + 1}/{num_batches}...")
                     all_precision.extend([0.0] * len(batch_recovered))
                     all_recall.extend([0.0] * len(batch_recovered))
                     all_f1.extend([0.0] * len(batch_recovered))
-            else:
+                    failed_batches += 1
+                    batch_success = True  # Mark as "handled" to break retry loop
+                    
+                    # If too many consecutive failures, switch to CPU
+                    if consecutive_failures >= max_consecutive_failures and device == "cuda":
+                        print(f"\nToo many consecutive failures ({consecutive_failures}). Switching to CPU...")
+                        device = "cpu"
+                        # Reload scorer on CPU
+                        del scorer
+                        torch.cuda.empty_cache()
+                        scorer = BERTScorer(
+                            model_type=model_name,
+                            lang='en',
+                            device="cpu",
+                            batch_size=16,
+                            rescale_with_baseline=True,
+                            nthreads=4
+                        )
+                        effective_batch_size = 16
+                        consecutive_failures = 0
+                        print("Switched to CPU successfully!")
+                    
+            except Exception as e:
+                failed_batches += 1
+                consecutive_failures += 1
+                print(f"\nWarning: Failed to process batch {i//effective_batch_size + 1}/{num_batches}: {e}")
                 all_precision.extend([0.0] * len(batch_recovered))
                 all_recall.extend([0.0] * len(batch_recovered))
                 all_f1.extend([0.0] * len(batch_recovered))
+                batch_success = True  # Mark as handled
                 
-        except Exception as e:
-            failed_batches += 1
-            print(f"\nWarning: Failed to process batch {i//effective_batch_size + 1}/{num_batches}: {e}")
-            all_precision.extend([0.0] * len(batch_recovered))
-            all_recall.extend([0.0] * len(batch_recovered))
-            all_f1.extend([0.0] * len(batch_recovered))
-            
-            # Clear cache on any error
-            if device == "cuda" and torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            continue
+                # Clear cache on any error
+                if device == "cuda" and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
     
     # Clean up scorer
     del scorer
@@ -320,8 +386,8 @@ if __name__ == '__main__':
                        help="Source tokenizer path (for de-tokenization)")
     parser.add_argument("--target-tokenizer-path", type=str, default=None,
                        help="Target tokenizer path (optional, for future use)")
-    parser.add_argument("-b", "--bert-score-model-path", type=str, default="microsoft/deberta-base-mnli",
-                       help="BERTScore model name (default: deberta-base-mnli, lighter than deberta-xlarge)")
+    parser.add_argument("-b", "--bert-score-model-path", type=str, default="roberta-base",
+                       help="BERTScore model name (default: roberta-base, much lighter. Options: roberta-base, distilbert-base-uncased, microsoft/deberta-base-mnli)")
     parser.add_argument("-w", "--bleu-weights", type=str, default="1,0,0,0")
     parser.add_argument("--output-dir", type=str, default=None,
                        help="Directory to save evaluation results JSON (default: same as eval_file_path parent)")

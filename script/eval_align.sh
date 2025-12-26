@@ -14,7 +14,7 @@ export MATRIX_EVAL_DATA_PATH="${MAIN_DIR}/data/pretrain-dataset/pythia-2-qwen2-7
 # Evaluation settings
 export EVAL_METHOD=both  # Run both BLEU and BERTScore
 export BLEU_WEIGHT="1,0,0,0"
-export BERT_SCORE_MODEL="microsoft/deberta-base-mnli"  # BERTScore model (lighter than deberta-xlarge)
+export BERT_SCORE_MODEL="roberta-base"  # BERTScore model (much lighter and faster than deberta models)
 export SOURCE_TOKENIZER_PATH="EleutherAI/pythia-1b"
 export OUTPUT_DIR="${MAIN_DIR}/data/evaluation_results"
 export BERTSCORE_BATCH_SIZE=32  # Optimized: model loaded once, can use larger batches
