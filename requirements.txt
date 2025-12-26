@@ -16,3 +16,5 @@ sacremoses>=0.0.53
 sacrebleu>=2.0.0
 zstandard>=0.21.0
 tf-keras>=2.15.0
+bert-score>=0.3.13
+matplotlib>=3.7.0

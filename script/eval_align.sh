@@ -11,19 +11,28 @@ export TGT_ID_2_SRC_ID_RES_PATH="${MAIN_DIR}/data/pythia2qwen2-7b/align_matrix.j
 
 export MATRIX_EVAL_DATA_PATH="${MAIN_DIR}/data/pretrain-dataset/pythia-2-qwen2-7b-glove-eval-mix"
 
-# BLEU-1 evaluation
-export EVAL_METHOD=bleu
+# Evaluation settings
+export EVAL_METHOD=both  # Run both BLEU and BERTScore
 export BLEU_WEIGHT="1,0,0,0"
+export BERT_SCORE_MODEL="microsoft/deberta-xlarge-mnli"  # BERTScore model
+export SOURCE_TOKENIZER_PATH="EleutherAI/pythia-1b"
+export OUTPUT_DIR="${MAIN_DIR}/data/evaluation_results"
 
-# Bert-score evaluation
-# export EVAL_METHOD=bert-score
-export BERT_SOCRE_EVAL_MODEL="all-mpnet-base-v2"
-export TOKENIZER_PATH="EleutherAI/pythia-1b"
-
+# Run both BLEU and BERTScore evaluations
 python src/eval_matrix.py \
     -e ${EVAL_METHOD} \
     -m ${TGT_ID_2_SRC_ID_RES_PATH} \
     -f ${MATRIX_EVAL_DATA_PATH} \
-    -t ${TOKENIZER_PATH} \
-    -b ${BERT_SOCRE_EVAL_MODEL} \
-    -w ${BLEU_WEIGHT}
+    -t ${SOURCE_TOKENIZER_PATH} \
+    -b ${BERT_SCORE_MODEL} \
+    -w ${BLEU_WEIGHT} \
+    --output-dir ${OUTPUT_DIR} \
+    --batch-size 64 \
+    --device cuda
+
+# Generate plots from evaluation results
+echo ""
+echo "Generating evaluation plots..."
+python src/plot_evaluation_results.py \
+    --results-file ${OUTPUT_DIR}/evaluation_results.json \
+    --output-dir ${MAIN_DIR}/figure
