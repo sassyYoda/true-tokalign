@@ -169,12 +169,12 @@ if __name__ == '__main__':
                        help="Source tokenizer path (for de-tokenization)")
     parser.add_argument("--target-tokenizer-path", type=str, default=None,
                        help="Target tokenizer path (optional, for future use)")
-    parser.add_argument("-b", "--bert-score-model-path", type=str, default="microsoft/deberta-xlarge-mnli",
-                       help="BERTScore model name")
+    parser.add_argument("-b", "--bert-score-model-path", type=str, default="microsoft/deberta-base-mnli",
+                       help="BERTScore model name (default: deberta-base-mnli, lighter than deberta-xlarge)")
     parser.add_argument("-w", "--bleu-weights", type=str, default="1,0,0,0")
     parser.add_argument("--output-dir", type=str, default=None,
                        help="Directory to save evaluation results JSON (default: same as eval_file_path parent)")
-    parser.add_argument("--batch-size", type=int, default=64, help="Batch size for BERTScore")
+    parser.add_argument("--batch-size", type=int, default=16, help="Batch size for BERTScore (default: 16, reduce if OOM)")
     parser.add_argument("--device", type=str, default="cuda", help="Device for BERTScore (cuda/cpu)")
 
     args = parser.parse_args()
@@ -209,25 +209,39 @@ if __name__ == '__main__':
         print("\n" + "="*70)
         print("Running BERTScore Evaluation")
         print("="*70)
-        bertscore_results = eval_bert_score(
-            trans_dict_path = args.one2one_matrix_path,
-            eval_file_path = args.eval_file_path,
-            source_tokenizer_path = args.tokenizer_path,
-            target_tokenizer_path = args.target_tokenizer_path,
-            model_name = args.bert_score_model_path,
-            batch_size = args.batch_size,
-            device = args.device
-        )
-        results["bertscore"] = bertscore_results
+        try:
+            bertscore_results = eval_bert_score(
+                trans_dict_path = args.one2one_matrix_path,
+                eval_file_path = args.eval_file_path,
+                source_tokenizer_path = args.tokenizer_path,
+                target_tokenizer_path = args.target_tokenizer_path,
+                model_name = args.bert_score_model_path,
+                batch_size = args.batch_size,
+                device = args.device
+            )
+            results["bertscore"] = bertscore_results
+        except Exception as e:
+            print(f"\nERROR: BERTScore evaluation failed: {e}")
+            print("This may be due to CUDA out of memory. Try:")
+            print("  - Using a smaller model (e.g., 'microsoft/deberta-base-mnli' or 'roberta-base')")
+            print("  - Reducing batch size (--batch-size 8 or --batch-size 4)")
+            print("  - Using CPU instead (--device cpu)")
+            print("\nContinuing with BLEU results only...")
+            if "error" not in results:
+                results["error"] = {}
+            results["error"]["bertscore"] = str(e)
     
-    # Save results to JSON
-    output_file = os.path.join(output_dir, "evaluation_results.json")
-    with open(output_file, "w") as f:
-        json.dump(results, f, indent=2)
-    print(f"\nEvaluation results saved to: {output_file}")
-    
-    # Print summary
-    if "bleu" in results:
-        print(f"\nSummary - BLEU F1: {results['bleu']['bleu']:.6f}")
-    if "bertscore" in results:
-        print(f"Summary - BERTScore F1: {results['bertscore']['f1']:.6f}")
+    # Save results to JSON (only if we have at least one successful evaluation)
+    if results:
+        output_file = os.path.join(output_dir, "evaluation_results.json")
+        with open(output_file, "w") as f:
+            json.dump(results, f, indent=2)
+        print(f"\nEvaluation results saved to: {output_file}")
+        
+        # Print summary
+        if "bleu" in results:
+            print(f"\nSummary - BLEU Average: {results['bleu']['bleu']:.6f}")
+        if "bertscore" in results:
+            print(f"Summary - BERTScore F1: {results['bertscore']['f1']:.6f}")
+    else:
+        print("\nERROR: No evaluation results to save.")

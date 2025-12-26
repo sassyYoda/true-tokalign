@@ -264,9 +264,19 @@ def main():
     
     args = parser.parse_args()
     
+    # Check if file exists
+    if not os.path.exists(args.results_file):
+        print(f"ERROR: Results file not found: {args.results_file}")
+        print("Please run the evaluation first.")
+        return
+    
     # Load results
     print(f"Loading results from: {args.results_file}")
-    results = load_results(args.results_file)
+    try:
+        results = load_results(args.results_file)
+    except Exception as e:
+        print(f"ERROR: Failed to load results file: {e}")
+        return
     
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
