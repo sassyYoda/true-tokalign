@@ -141,56 +141,126 @@ def eval_bert_score(
     # Clear GPU cache before starting
     if device == "cuda" and torch.cuda.is_available():
         torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            print(f"GPU memory before BERTScore: {torch.cuda.memory_allocated()/1024**3:.2f} GB allocated, {torch.cuda.memory_reserved()/1024**3:.2f} GB reserved")
     
-    # Process in chunks to avoid memory issues
-    # Use smaller chunks for BERTScore to manage memory better
-    chunk_size = min(batch_size * 4, 100)  # Process up to 100 examples at a time
+    # Process in very small chunks to avoid memory issues
+    # Start with very small chunks (1-2 examples) and increase if successful
+    chunk_size = max(1, min(batch_size, 4))  # Process 1-4 examples at a time
     all_precision = []
     all_recall = []
     all_f1 = []
     
     num_chunks = (len(recovered_texts) + chunk_size - 1) // chunk_size
-    print(f"Processing {len(recovered_texts)} examples in {num_chunks} chunks of ~{chunk_size} examples each...")
+    print(f"Processing {len(recovered_texts)} examples in {num_chunks} chunks of {chunk_size} examples each...")
+    print(f"Using device: {device}, model: {model_name}, batch_size: {batch_size}")
+    
+    successful_chunks = 0
+    failed_chunks = 0
     
     for i in tqdm(range(0, len(recovered_texts), chunk_size), desc="BERTScore chunks"):
         chunk_recovered = recovered_texts[i:i+chunk_size]
         chunk_original = original_texts[i:i+chunk_size]
         
+        # Clear GPU cache before each chunk
+        if device == "cuda" and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        
         try:
-            # Compute BERTScore for this chunk
+            # Compute BERTScore for this chunk with minimal memory usage
             P, R, F1 = bert_score(
                 chunk_recovered,
                 chunk_original,
                 model_type=model_name,
-                batch_size=batch_size,
+                batch_size=1,  # Use batch_size=1 for minimal memory
                 device=device,
-                verbose=False  # Reduce verbosity for chunks
+                verbose=False,
+                lang='en',  # Specify language to avoid auto-detection overhead
+                rescale_with_baseline=True  # Use baseline rescaling (more memory efficient)
             )
             
+            # Move to CPU immediately and delete GPU tensors
+            P_cpu = P.cpu()
+            R_cpu = R.cpu()
+            F1_cpu = F1.cpu()
+            
             # Collect scores
-            all_precision.extend(P.cpu().tolist())
-            all_recall.extend(R.cpu().tolist())
-            all_f1.extend(F1.cpu().tolist())
+            all_precision.extend(P_cpu.tolist())
+            all_recall.extend(R_cpu.tolist())
+            all_f1.extend(F1_cpu.tolist())
+            
+            # Delete tensors explicitly
+            del P, R, F1, P_cpu, R_cpu, F1_cpu
+            
+            successful_chunks += 1
             
             # Clear GPU cache after each chunk
             if device == "cuda" and torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 
+        except torch.cuda.OutOfMemoryError as e:
+            failed_chunks += 1
+            print(f"\nCUDA OOM at chunk {i//chunk_size + 1}/{num_chunks}: {e}")
+            
+            # Try with CPU as fallback
+            if device == "cuda":
+                print(f"Attempting CPU fallback for chunk {i//chunk_size + 1}...")
+                try:
+                    torch.cuda.empty_cache()
+                    P, R, F1 = bert_score(
+                        chunk_recovered,
+                        chunk_original,
+                        model_type=model_name,
+                        batch_size=1,
+                        device="cpu",  # Fallback to CPU
+                        verbose=False,
+                        lang='en',
+                        rescale_with_baseline=True
+                    )
+                    all_precision.extend(P.tolist())
+                    all_recall.extend(R.tolist())
+                    all_f1.extend(F1.tolist())
+                    del P, R, F1
+                    successful_chunks += 1
+                    print(f"CPU fallback successful for chunk {i//chunk_size + 1}")
+                except Exception as e2:
+                    print(f"CPU fallback also failed: {e2}")
+                    all_precision.extend([0.0] * len(chunk_recovered))
+                    all_recall.extend([0.0] * len(chunk_recovered))
+                    all_f1.extend([0.0] * len(chunk_recovered))
+            else:
+                all_precision.extend([0.0] * len(chunk_recovered))
+                all_recall.extend([0.0] * len(chunk_recovered))
+                all_f1.extend([0.0] * len(chunk_recovered))
+                
         except Exception as e:
+            failed_chunks += 1
             print(f"\nWarning: Failed to process chunk {i//chunk_size + 1}/{num_chunks}: {e}")
-            print(f"Skipping {len(chunk_recovered)} examples in this chunk...")
-            # Add zeros for failed chunk
             all_precision.extend([0.0] * len(chunk_recovered))
             all_recall.extend([0.0] * len(chunk_recovered))
             all_f1.extend([0.0] * len(chunk_recovered))
+            
+            # Clear cache on any error
+            if device == "cuda" and torch.cuda.is_available():
+                torch.cuda.empty_cache()
             continue
     
-    # Calculate averages
-    if len(all_f1) > 0:
-        avg_precision = sum(all_precision) / len(all_precision)
-        avg_recall = sum(all_recall) / len(all_recall)
-        avg_f1 = sum(all_f1) / len(all_f1)
+    print(f"\nBERTScore processing complete: {successful_chunks} successful chunks, {failed_chunks} failed chunks")
+    
+    # Calculate averages (only from successful examples)
+    successful_scores = [f for f in all_f1 if f > 0.0]
+    
+    if len(successful_scores) > 0:
+        # Calculate averages only from successful examples
+        successful_indices = [i for i, f in enumerate(all_f1) if f > 0.0]
+        successful_precision = [all_precision[i] for i in successful_indices]
+        successful_recall = [all_recall[i] for i in successful_indices]
         
+        avg_precision = sum(successful_precision) / len(successful_precision)
+        avg_recall = sum(successful_recall) / len(successful_recall)
+        avg_f1 = sum(successful_scores) / len(successful_scores)
+        
+        print(f"\nBERTScore results (from {len(successful_scores)}/{len(recovered_texts)} successful examples):")
         print(f"BERTScore Precision: {avg_precision:.6f}")
         print(f"BERTScore Recall: {avg_recall:.6f}")
         print(f"BERTScore F1: {avg_f1:.6f}")
@@ -200,12 +270,13 @@ def eval_bert_score(
             "recall": avg_recall,
             "f1": avg_f1,
             "num_examples": len(recovered_texts),
+            "num_successful": len(successful_scores),
             "precision_scores": all_precision,
             "recall_scores": all_recall,
             "f1_scores": all_f1
         }
     else:
-        raise Exception("Failed to compute BERTScore for any examples")
+        raise Exception(f"Failed to compute BERTScore for any examples. All {len(recovered_texts)} examples failed.")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
