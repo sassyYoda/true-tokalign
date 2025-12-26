@@ -6,6 +6,7 @@ import argparse
 from bert_score import score as bert_score
 from tqdm import tqdm
 import os
+import torch
 
 def read_tsv(file_path):
     res = []
@@ -88,9 +89,11 @@ def eval_bert_score(
     eval_file_path="./data/pretrain-dataset/pythia-2-qwen2-7b-MX1K-eval",
     source_tokenizer_path="EleutherAI/pythia-1b",
     target_tokenizer_path=None,
-    model_name="microsoft/deberta-xlarge-mnli",
-    batch_size=64,
+    model_name="microsoft/deberta-base-mnli",
+    batch_size=8,
     device="cuda",
+    max_examples=None,
+    **kwargs
 ):
     """
     Evaluate using BERTScore:
@@ -106,6 +109,12 @@ def eval_bert_score(
 
     eval_data = read_tsv(eval_file_path)
     td = trans
+    
+    # Limit number of examples if specified (for testing/debugging)
+    max_examples = kwargs.get('max_examples', None)
+    if max_examples and max_examples > 0:
+        eval_data = eval_data[:max_examples]
+        print(f"Limiting evaluation to {max_examples} examples for testing/debugging")
 
     # Collect recovered texts (C') and original texts (C)
     recovered_texts = []  # C': de-tokenized from mapped source token IDs
@@ -128,35 +137,75 @@ def eval_bert_score(
         original_texts.append(original_text)
     
     print(f"Computing BERTScore for {len(recovered_texts)} examples...")
-    # Compute BERTScore: P (precision), R (recall), F1
-    # bert_score returns (P, R, F1) tensors
-    P, R, F1 = bert_score(
-        recovered_texts,
-        original_texts,
-        model_type=model_name,
-        batch_size=batch_size,
-        device=device,
-        verbose=True
-    )
+    
+    # Clear GPU cache before starting
+    if device == "cuda" and torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    
+    # Process in chunks to avoid memory issues
+    # Use smaller chunks for BERTScore to manage memory better
+    chunk_size = min(batch_size * 4, 100)  # Process up to 100 examples at a time
+    all_precision = []
+    all_recall = []
+    all_f1 = []
+    
+    num_chunks = (len(recovered_texts) + chunk_size - 1) // chunk_size
+    print(f"Processing {len(recovered_texts)} examples in {num_chunks} chunks of ~{chunk_size} examples each...")
+    
+    for i in tqdm(range(0, len(recovered_texts), chunk_size), desc="BERTScore chunks"):
+        chunk_recovered = recovered_texts[i:i+chunk_size]
+        chunk_original = original_texts[i:i+chunk_size]
+        
+        try:
+            # Compute BERTScore for this chunk
+            P, R, F1 = bert_score(
+                chunk_recovered,
+                chunk_original,
+                model_type=model_name,
+                batch_size=batch_size,
+                device=device,
+                verbose=False  # Reduce verbosity for chunks
+            )
+            
+            # Collect scores
+            all_precision.extend(P.cpu().tolist())
+            all_recall.extend(R.cpu().tolist())
+            all_f1.extend(F1.cpu().tolist())
+            
+            # Clear GPU cache after each chunk
+            if device == "cuda" and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                
+        except Exception as e:
+            print(f"\nWarning: Failed to process chunk {i//chunk_size + 1}/{num_chunks}: {e}")
+            print(f"Skipping {len(chunk_recovered)} examples in this chunk...")
+            # Add zeros for failed chunk
+            all_precision.extend([0.0] * len(chunk_recovered))
+            all_recall.extend([0.0] * len(chunk_recovered))
+            all_f1.extend([0.0] * len(chunk_recovered))
+            continue
     
     # Calculate averages
-    avg_precision = P.mean().item()
-    avg_recall = R.mean().item()
-    avg_f1 = F1.mean().item()
-    
-    print(f"BERTScore Precision: {avg_precision:.6f}")
-    print(f"BERTScore Recall: {avg_recall:.6f}")
-    print(f"BERTScore F1: {avg_f1:.6f}")
-    
-    return {
-        "precision": avg_precision,
-        "recall": avg_recall,
-        "f1": avg_f1,
-        "num_examples": len(recovered_texts),
-        "precision_scores": P.tolist(),
-        "recall_scores": R.tolist(),
-        "f1_scores": F1.tolist()
-    }
+    if len(all_f1) > 0:
+        avg_precision = sum(all_precision) / len(all_precision)
+        avg_recall = sum(all_recall) / len(all_recall)
+        avg_f1 = sum(all_f1) / len(all_f1)
+        
+        print(f"BERTScore Precision: {avg_precision:.6f}")
+        print(f"BERTScore Recall: {avg_recall:.6f}")
+        print(f"BERTScore F1: {avg_f1:.6f}")
+        
+        return {
+            "precision": avg_precision,
+            "recall": avg_recall,
+            "f1": avg_f1,
+            "num_examples": len(recovered_texts),
+            "precision_scores": all_precision,
+            "recall_scores": all_recall,
+            "f1_scores": all_f1
+        }
+    else:
+        raise Exception("Failed to compute BERTScore for any examples")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -174,8 +223,9 @@ if __name__ == '__main__':
     parser.add_argument("-w", "--bleu-weights", type=str, default="1,0,0,0")
     parser.add_argument("--output-dir", type=str, default=None,
                        help="Directory to save evaluation results JSON (default: same as eval_file_path parent)")
-    parser.add_argument("--batch-size", type=int, default=16, help="Batch size for BERTScore (default: 16, reduce if OOM)")
+    parser.add_argument("--batch-size", type=int, default=8, help="Batch size for BERTScore (default: 8, reduce if OOM)")
     parser.add_argument("--device", type=str, default="cuda", help="Device for BERTScore (cuda/cpu)")
+    parser.add_argument("--max-examples", type=int, default=None, help="Maximum number of examples to evaluate (for testing/debugging)")
 
     args = parser.parse_args()
 
@@ -217,7 +267,8 @@ if __name__ == '__main__':
                 target_tokenizer_path = args.target_tokenizer_path,
                 model_name = args.bert_score_model_path,
                 batch_size = args.batch_size,
-                device = args.device
+                device = args.device,
+                max_examples = args.max_examples
             )
             results["bertscore"] = bertscore_results
         except Exception as e:
