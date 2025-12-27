@@ -90,10 +90,10 @@ def load_model_and_tokenizer(
 
 def load_culturax_language(
     language: str,
-    split: str = "validation",
+    split: str = "train",
     max_samples: Optional[int] = None,
     cache_dir: Optional[str] = None,
-    dataset_name: str = "uonlp/CulturaX"
+    dataset_name: str = "cultura_x"
 ) -> List[str]:
     """Load CulturaX dataset for a specific language.
     
@@ -101,7 +101,7 @@ def load_culturax_language(
     
     Args:
         language: Language code (e.g., 'ar', 'de', 'en')
-        split: Dataset split ('train', 'validation', 'test')
+        split: Dataset split ('train' - CulturaX only has train split)
         max_samples: Maximum number of samples to load
         cache_dir: Cache directory for datasets
         dataset_name: CulturaX dataset name on HuggingFace
@@ -128,32 +128,18 @@ def load_culturax_language(
                 streaming=True
             )
         except Exception as stream_error:
-            # If streaming fails, try without language config
-            print(f"Streaming with language config failed: {stream_error}")
-            print("Trying streaming without language config...")
-            dataset = load_dataset(
-                dataset_name,
-                split=split,
-                cache_dir=cache_dir,
-                trust_remote_code=True,
-                streaming=True
-            )
+            # CulturaX requires language config, so if this fails, re-raise
+            print(f"Error loading CulturaX {language}: {stream_error}")
+            raise
         
         texts = []
         text_field = "text"
         processed = 0
         
         # Iterate through stream until we have enough samples
+        # CulturaX already filters by language via the config, so no need to filter again
         for example in tqdm(dataset, desc=f"Streaming {language} texts", total=max_samples if max_samples else None):
             processed += 1
-            
-            # Filter by language if needed (when loading without language config)
-            if 'language' in example:
-                if example['language'].lower() != language.lower():
-                    continue
-            elif 'lang' in example:
-                if example['lang'].lower() != language.lower():
-                    continue
             
             text = example.get(text_field, "")
             if text and isinstance(text, str) and len(text.strip()) > 50:  # Filter very short texts
@@ -365,13 +351,13 @@ def compute_normalized_perplexity(
 def evaluate_all_languages(
     model_path: str,
     languages: List[str] = None,
-    split: str = "validation",
+    split: str = "train",
     max_samples_per_lang: Optional[int] = None,
     batch_size: int = 8,
     max_length: int = 512,
     device: str = "cuda",
     cache_dir: Optional[str] = None,
-    dataset_name: str = "uonlp/CulturaX"
+    dataset_name: str = "cultura_x"
 ) -> Dict:
     """Evaluate perplexity on all specified languages.
     
@@ -593,9 +579,9 @@ def main():
     parser.add_argument(
         "--split",
         type=str,
-        default="validation",
-        choices=["train", "validation", "test"],
-        help="Dataset split to use (default: validation)"
+        default="train",
+        choices=["train"],
+        help="Dataset split to use (default: train - CulturaX only has train split)"
     )
     parser.add_argument(
         "--max_samples_per_lang",
