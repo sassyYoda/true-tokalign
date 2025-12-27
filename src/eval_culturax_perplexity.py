@@ -233,14 +233,14 @@ def compute_normalized_perplexity(
     
     model.eval()
     total_loss = 0.0
-    total_tokens = 0
+    total_pythia_tokens = 0  # Normalize by Pythia tokens, not model tokens
     num_valid_samples = 0
     
     # Process texts
     for batch_idx in tqdm(range(0, len(texts), batch_size), desc=f"Processing {language}"):
         batch_texts = texts[batch_idx:batch_idx + batch_size]
         batch_losses = []
-        batch_token_counts = []
+        batch_pythia_token_counts = []  # Track Pythia token counts for normalization
         
         for text in batch_texts:
             try:
@@ -258,6 +258,12 @@ def compute_normalized_perplexity(
                     add_special_tokens=True
                 )
                 pythia_input_ids = pythia_encodings["input_ids"]
+                
+                # Count Pythia tokens (excluding special tokens for normalization)
+                # Subtract 1 because we predict one less token than input length
+                pythia_num_tokens = pythia_input_ids.shape[1] - 1
+                if pythia_num_tokens <= 0:
+                    continue
                 
                 # Step 2: Decode Pythia tokens back to text
                 # This normalization ensures consistent tokenization baseline
@@ -283,16 +289,22 @@ def compute_normalized_perplexity(
                 if seq_len <= max_length:
                     with torch.no_grad():
                         outputs = model(input_ids=model_input_ids, labels=model_input_ids)
-                        num_tokens = seq_len - 1
-                        if num_tokens > 0:
-                            total_loss_val = outputs.loss.item() * num_tokens
+                        # Loss is computed per model token, but we normalize by Pythia tokens
+                        # Multiply by model tokens to get total loss, then normalize by Pythia tokens
+                        model_num_tokens = seq_len - 1
+                        if model_num_tokens > 0:
+                            total_loss_val = outputs.loss.item() * model_num_tokens
                             batch_losses.append(total_loss_val)
-                            batch_token_counts.append(num_tokens)
+                            # Use Pythia token count for normalization (not model token count)
+                            batch_pythia_token_counts.append(pythia_num_tokens)
                             num_valid_samples += 1
                 else:
                     # Sliding window approach
                     window_losses = []
-                    window_tokens = []
+                    window_model_tokens = []
+                    # For sliding window, we need to track which Pythia tokens correspond to each window
+                    # Since we can't perfectly align, we'll distribute Pythia tokens proportionally
+                    total_model_tokens_in_seq = seq_len - 1
                     
                     for start_idx in range(0, seq_len - max_length + 1, stride):
                         end_idx = min(start_idx + max_length, seq_len)
@@ -303,33 +315,39 @@ def compute_normalized_perplexity(
                         
                         with torch.no_grad():
                             outputs = model(input_ids=window_ids, labels=window_ids)
-                            num_tokens = window_ids.shape[1] - 1
-                            if num_tokens > 0:
-                                total_loss_val = outputs.loss.item() * num_tokens
+                            model_num_tokens = window_ids.shape[1] - 1
+                            if model_num_tokens > 0:
+                                total_loss_val = outputs.loss.item() * model_num_tokens
                                 window_losses.append(total_loss_val)
-                                window_tokens.append(num_tokens)
+                                window_model_tokens.append(model_num_tokens)
                     
                     if window_losses:
                         total_window_loss = sum(window_losses)
-                        total_window_tokens = sum(window_tokens)
-                        if total_window_tokens > 0:
-                            batch_losses.append(total_window_loss)
-                            batch_token_counts.append(total_window_tokens)
-                            num_valid_samples += 1
+                        total_window_model_tokens = sum(window_model_tokens)
+                        # Distribute Pythia tokens proportionally across windows
+                        if total_window_model_tokens > 0:
+                            # Proportion of Pythia tokens for this sequence
+                            pythia_proportion = total_window_model_tokens / total_model_tokens_in_seq if total_model_tokens_in_seq > 0 else 1.0
+                            pythia_tokens_for_window = int(pythia_num_tokens * pythia_proportion)
+                            if pythia_tokens_for_window > 0:
+                                batch_losses.append(total_window_loss)
+                                batch_pythia_token_counts.append(pythia_tokens_for_window)
+                                num_valid_samples += 1
                             
             except Exception as e:
                 print(f"Error processing {language} sample {batch_idx}: {e}")
                 continue
         
-        # Accumulate losses
+        # Accumulate losses and Pythia token counts
         if batch_losses:
-            for loss, num_tokens in zip(batch_losses, batch_token_counts):
+            for loss, pythia_tokens in zip(batch_losses, batch_pythia_token_counts):
                 total_loss += loss
-                total_tokens += num_tokens
+                total_pythia_tokens += pythia_tokens
     
     # Compute average loss and perplexity
-    if total_tokens > 0:
-        avg_loss = total_loss / total_tokens
+    # Normalize by Pythia tokens (not model tokens) for fair comparison across tokenizers
+    if total_pythia_tokens > 0:
+        avg_loss = total_loss / total_pythia_tokens
         perplexity = np.exp(avg_loss)
     else:
         avg_loss = float('inf')
@@ -338,12 +356,12 @@ def compute_normalized_perplexity(
     results = {
         "language": language,
         "num_samples": num_valid_samples,
-        "total_tokens": total_tokens,
+        "total_pythia_tokens": total_pythia_tokens,  # Pythia tokens used for normalization
         "average_loss": avg_loss,
         "perplexity": perplexity
     }
     
-    print(f"{language}: Perplexity = {perplexity:.4f} (loss: {avg_loss:.4f}, {num_valid_samples} samples)")
+    print(f"{language}: Perplexity = {perplexity:.4f} (loss: {avg_loss:.4f}, {num_valid_samples} samples, {total_pythia_tokens} Pythia tokens)")
     
     return results
 
