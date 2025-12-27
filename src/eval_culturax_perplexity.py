@@ -560,7 +560,7 @@ def main():
         type=str,
         nargs="?",
         const="default",
-        help="Use experiment model. If no path provided, uses default from init_model.sh: data/pythia2qwen2-7b/TokAlign-Init-1B"
+        help="Use experiment model. If no path provided, uses default S2 checkpoint: log/1b/0_qwen2-7b_S2/checkpoint-2500"
     )
     parser.add_argument(
         "--model_path",
@@ -637,9 +637,9 @@ def main():
         print(f"Using baseline model: {model_path}")
     elif args.experiment is not None:
         if args.experiment == "default":
-            # Default experiment model path from init_model.sh
+            # Default to S2 checkpoint-2500 (final trained model)
             script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            model_path = os.path.join(script_dir, "data/pythia2qwen2-7b/TokAlign-Init-1B")
+            model_path = os.path.join(script_dir, "log/1b/0_qwen2-7b_S2/checkpoint-2500")
         else:
             model_path = args.experiment
         print(f"Using experiment model: {model_path}")
