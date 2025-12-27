@@ -97,6 +97,8 @@ def load_culturax_language(
 ) -> List[str]:
     """Load CulturaX dataset for a specific language.
     
+    Uses streaming mode to avoid downloading entire dataset when only a few samples are needed.
+    
     Args:
         language: Language code (e.g., 'ar', 'de', 'en')
         split: Dataset split ('train', 'validation', 'test')
@@ -109,25 +111,50 @@ def load_culturax_language(
     """
     print(f"\nLoading CulturaX {language} ({split})...")
     
+    # Always use streaming mode to avoid downloading entire dataset
+    # CulturaX is huge - streaming is essential for efficiency
+    # Note: First run may download metadata/index files, but data itself streams
+    print(f"Using streaming mode to load only needed samples (max_samples={max_samples})...")
+    
     try:
-        # Load CulturaX dataset for specific language
-        dataset = load_dataset(
-            dataset_name,
-            language,
-            split=split,
-            cache_dir=cache_dir,
-            trust_remote_code=True,
-            streaming=False
-        )
+        # Load in streaming mode - only downloads what we need
+        try:
+            dataset = load_dataset(
+                dataset_name,
+                language,
+                split=split,
+                cache_dir=cache_dir,
+                trust_remote_code=True,
+                streaming=True
+            )
+        except Exception as stream_error:
+            # If streaming fails, try without language config
+            print(f"Streaming with language config failed: {stream_error}")
+            print("Trying streaming without language config...")
+            dataset = load_dataset(
+                dataset_name,
+                split=split,
+                cache_dir=cache_dir,
+                trust_remote_code=True,
+                streaming=True
+            )
         
-        print(f"Loaded {len(dataset)} examples from CulturaX {language}")
-        
-        # Extract texts
         texts = []
-        text_field = "text"  # CulturaX typically uses 'text' field
+        text_field = "text"
+        processed = 0
         
-        for i in tqdm(range(len(dataset)), desc=f"Extracting {language} texts"):
-            example = dataset[i]
+        # Iterate through stream until we have enough samples
+        for example in tqdm(dataset, desc=f"Streaming {language} texts", total=max_samples if max_samples else None):
+            processed += 1
+            
+            # Filter by language if needed (when loading without language config)
+            if 'language' in example:
+                if example['language'].lower() != language.lower():
+                    continue
+            elif 'lang' in example:
+                if example['lang'].lower() != language.lower():
+                    continue
+            
             text = example.get(text_field, "")
             if text and isinstance(text, str) and len(text.strip()) > 50:  # Filter very short texts
                 texts.append(text.strip())
@@ -135,35 +162,36 @@ def load_culturax_language(
             if max_samples and len(texts) >= max_samples:
                 break
         
-        print(f"Extracted {len(texts)} valid {language} texts")
+        print(f"Extracted {len(texts)} valid {language} texts from {processed} processed examples (streaming mode)")
         return texts
         
     except Exception as e:
         print(f"Error loading CulturaX {language}: {e}")
-        print(f"Trying alternative loading method...")
+        print(f"Trying alternative loading method with streaming...")
         
         try:
-            # Try loading without language config
+            # Try streaming without language config
             dataset = load_dataset(
                 dataset_name,
                 split=split,
                 cache_dir=cache_dir,
                 trust_remote_code=True,
-                streaming=False
+                streaming=True
             )
-            
-            # Filter by language if possible
-            if hasattr(dataset, 'filter'):
-                # Try to filter by language field if available
-                if 'language' in dataset.column_names:
-                    dataset = dataset.filter(lambda x: x.get('language', '').lower() == language.lower())
-                elif 'lang' in dataset.column_names:
-                    dataset = dataset.filter(lambda x: x.get('lang', '').lower() == language.lower())
             
             texts = []
             text_field = "text"
-            for i in tqdm(range(len(dataset)), desc=f"Extracting {language} texts"):
-                example = dataset[i]
+            
+            # Filter by language while streaming
+            for example in tqdm(dataset, desc=f"Streaming and filtering {language}"):
+                # Check language field if available
+                if 'language' in example:
+                    if example['language'].lower() != language.lower():
+                        continue
+                elif 'lang' in example:
+                    if example['lang'].lower() != language.lower():
+                        continue
+                
                 text = example.get(text_field, "")
                 if text and isinstance(text, str) and len(text.strip()) > 50:
                     texts.append(text.strip())
@@ -171,11 +199,13 @@ def load_culturax_language(
                 if max_samples and len(texts) >= max_samples:
                     break
             
-            print(f"Extracted {len(texts)} valid {language} texts (alternative method)")
+            print(f"Extracted {len(texts)} valid {language} texts (alternative streaming method)")
             return texts
             
         except Exception as e2:
-            print(f"Failed to load CulturaX {language}: {e2}")
+            print(f"Failed to load CulturaX {language} with streaming: {e2}")
+            print("Note: CulturaX may download metadata/index files on first run.")
+            print("Subsequent runs will be faster as files are cached.")
             return []
 
 
