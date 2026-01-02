@@ -91,7 +91,15 @@ class ConstantLengthDataset(IterableDataset):
                     break
                 try:
                     sample = next(iterator)[self.content_field]
-                    assert len(sample) == self.seq_length
+                    if len(sample) != self.seq_length:
+                        raise ValueError(
+                            f"Dataset sequence length mismatch: expected {self.seq_length} tokens, "
+                            f"but found {len(sample)} tokens. "
+                            f"This indicates the dataset was not prepared correctly for packing. "
+                            f"All sequences must be exactly {self.seq_length} tokens when using packing with "
+                            f"pre-tokenized data. Please re-prepare the dataset with proper fixed-length chunking "
+                            f"(chunk/pad all sequences to exactly {self.seq_length} tokens)."
+                        )
                     buffer.append(sample)
                     buffer_len += len(buffer[-1])
                 except StopIteration:

@@ -1,52 +1,42 @@
-"""
-Evaluate normalized perplexity on CulturaX dataset across multiple languages.
-Following the TokAlign paper methodology: perplexity normalized to Pythia vocabulary.
-
-Languages evaluated:
-- High resource: ar, de, en, ja, zh
-- Medium resource: bn, ko, th, uk, vi
-- Low resource: ta, te, ur
-"""
-
 import argparse
 import json
 import os
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 import torch
-import torch.nn as nn
 import numpy as np
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import load_dataset
 from tqdm import tqdm
-from collections import defaultdict
 import pandas as pd
 
-# Language resource levels as defined in TokAlign paper
 LANGUAGE_RESOURCES = {
     "high": ["ar", "de", "en", "ja", "zh"],
     "medium": ["bn", "ko", "th", "uk", "vi"],
     "low": ["ta", "te", "ur"]
 }
 
-# All languages to evaluate
 ALL_LANGUAGES = [lang for langs in LANGUAGE_RESOURCES.values() for lang in langs]
 
-# Base Pythia model for normalization (using Pythia-1B as reference)
 PYTHIA_BASE_MODEL = "EleutherAI/pythia-1b"
+
+LANGUAGE_TO_RESOURCE = {lang: level for level, langs in LANGUAGE_RESOURCES.items() for lang in langs}
+
+
+def _setup_tokenizer(tokenizer):
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"
+    return tokenizer
 
 
 def load_pythia_tokenizer(cache_dir: Optional[str] = None):
-    """Load Pythia tokenizer for normalization."""
     print(f"Loading Pythia tokenizer from {PYTHIA_BASE_MODEL}...")
     tokenizer = AutoTokenizer.from_pretrained(
         PYTHIA_BASE_MODEL,
         cache_dir=cache_dir,
         trust_remote_code=True
     )
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.padding_side = "left"
-    return tokenizer
+    return _setup_tokenizer(tokenizer)
 
 
 def load_model_and_tokenizer(
@@ -55,7 +45,6 @@ def load_model_and_tokenizer(
     cache_dir: Optional[str] = None,
     torch_dtype: Optional[torch.dtype] = None
 ):
-    """Load the model and tokenizer to evaluate."""
     print(f"Loading model from: {model_path}")
     
     if torch_dtype is None:
@@ -66,11 +55,7 @@ def load_model_and_tokenizer(
         cache_dir=cache_dir,
         trust_remote_code=True
     )
-    
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-    
-    tokenizer.padding_side = "left"
+    _setup_tokenizer(tokenizer)
     
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
@@ -88,6 +73,27 @@ def load_model_and_tokenizer(
     return model, tokenizer
 
 
+def _extract_texts(dataset, language, max_samples, text_field="text"):
+    texts = []
+    processed = 0
+    
+    for example in tqdm(dataset, desc=f"Streaming {language} texts", total=max_samples if max_samples else None):
+        processed += 1
+        
+        lang_field = example.get('language') or example.get('lang')
+        if lang_field and lang_field.lower() != language.lower():
+            continue
+        
+        text = example.get(text_field, "")
+        if text and isinstance(text, str) and len(text.strip()) > 50:
+            texts.append(text.strip())
+        
+        if max_samples and len(texts) >= max_samples:
+            break
+    
+    return texts, processed
+
+
 def load_culturax_language(
     language: str,
     split: str = "train",
@@ -95,103 +101,35 @@ def load_culturax_language(
     cache_dir: Optional[str] = None,
     dataset_name: str = "cultura_x"
 ) -> List[str]:
-    """Load CulturaX dataset for a specific language.
-    
-    Uses streaming mode to avoid downloading entire dataset when only a few samples are needed.
-    
-    Args:
-        language: Language code (e.g., 'ar', 'de', 'en')
-        split: Dataset split ('train' - CulturaX only has train split)
-        max_samples: Maximum number of samples to load
-        cache_dir: Cache directory for datasets
-        dataset_name: CulturaX dataset name on HuggingFace
-    
-    Returns:
-        List of text strings
-    """
     print(f"\nLoading CulturaX {language} ({split})...")
-    
-    # Always use streaming mode to avoid downloading entire dataset
-    # CulturaX is huge - streaming is essential for efficiency
-    # Note: First run may download metadata/index files, but data itself streams
     print(f"Using streaming mode to load only needed samples (max_samples={max_samples})...")
     
-    try:
-        # Load in streaming mode - only downloads what we need
+    for use_lang_config in [True, False]:
         try:
+            if use_lang_config:
             dataset = load_dataset(
-                dataset_name,
-                language,
-                split=split,
-                cache_dir=cache_dir,
-                trust_remote_code=True,
-                streaming=True
+                    dataset_name, language, split=split,
+                    cache_dir=cache_dir, trust_remote_code=True, streaming=True
             )
-        except Exception as stream_error:
-            # CulturaX requires language config, so if this fails, re-raise
-            print(f"Error loading CulturaX {language}: {stream_error}")
-            raise
-        
-        texts = []
-        text_field = "text"
-        processed = 0
-        
-        # Iterate through stream until we have enough samples
-        # CulturaX already filters by language via the config, so no need to filter again
-        for example in tqdm(dataset, desc=f"Streaming {language} texts", total=max_samples if max_samples else None):
-            processed += 1
-            
-            text = example.get(text_field, "")
-            if text and isinstance(text, str) and len(text.strip()) > 50:  # Filter very short texts
-                texts.append(text.strip())
-            
-            if max_samples and len(texts) >= max_samples:
-                break
-        
+                texts, processed = _extract_texts(dataset, language, max_samples)
         print(f"Extracted {len(texts)} valid {language} texts from {processed} processed examples (streaming mode)")
-        return texts
-        
-    except Exception as e:
-        print(f"Error loading CulturaX {language}: {e}")
-        print(f"Trying alternative loading method with streaming...")
-        
-        try:
-            # Try streaming without language config
+            else:
             dataset = load_dataset(
-                dataset_name,
-                split=split,
-                cache_dir=cache_dir,
-                trust_remote_code=True,
-                streaming=True
+                    dataset_name, split=split,
+                    cache_dir=cache_dir, trust_remote_code=True, streaming=True
             )
-            
-            texts = []
-            text_field = "text"
-            
-            # Filter by language while streaming
-            for example in tqdm(dataset, desc=f"Streaming and filtering {language}"):
-                # Check language field if available
-                if 'language' in example:
-                    if example['language'].lower() != language.lower():
-                        continue
-                elif 'lang' in example:
-                    if example['lang'].lower() != language.lower():
-                        continue
-                
-                text = example.get(text_field, "")
-                if text and isinstance(text, str) and len(text.strip()) > 50:
-                    texts.append(text.strip())
-                
-                if max_samples and len(texts) >= max_samples:
-                    break
-            
+                texts, _ = _extract_texts(dataset, language, max_samples)
             print(f"Extracted {len(texts)} valid {language} texts (alternative streaming method)")
             return texts
-            
-        except Exception as e2:
-            print(f"Failed to load CulturaX {language} with streaming: {e2}")
+        except Exception as e:
+            if use_lang_config:
+                print(f"Error loading CulturaX {language}: {e}")
+                print("Trying alternative loading method with streaming...")
+            else:
+                print(f"Failed to load CulturaX {language} with streaming: {e}")
             print("Note: CulturaX may download metadata/index files on first run.")
             print("Subsequent runs will be faster as files are cached.")
+    
             return []
 
 
@@ -206,25 +144,6 @@ def compute_normalized_perplexity(
     device: str = "cuda",
     stride: Optional[int] = None
 ) -> Dict:
-    """Compute normalized perplexity.
-    
-    Normalization: Tokenize with Pythia tokenizer, then evaluate with model.
-    This ensures fair comparison across different tokenizers.
-    
-    Args:
-        model: The language model to evaluate
-        model_tokenizer: Tokenizer for the model
-        pythia_tokenizer: Pythia tokenizer for normalization
-        texts: List of texts to evaluate
-        language: Language code (for logging)
-        batch_size: Batch size for processing
-        max_length: Maximum sequence length
-        device: Device to run on
-        stride: Stride for sliding window
-    
-    Returns:
-        Dictionary with perplexity metrics
-    """
     print(f"\nComputing normalized perplexity for {language}...")
     print(f"Batch size: {batch_size}, Max length: {max_length}")
     
@@ -233,22 +152,16 @@ def compute_normalized_perplexity(
     
     model.eval()
     total_loss = 0.0
-    total_pythia_tokens = 0  # Normalize by Pythia tokens, not model tokens
+    total_pythia_tokens = 0
     num_valid_samples = 0
     
-    # Process texts
     for batch_idx in tqdm(range(0, len(texts), batch_size), desc=f"Processing {language}"):
         batch_texts = texts[batch_idx:batch_idx + batch_size]
         batch_losses = []
-        batch_pythia_token_counts = []  # Track Pythia token counts for normalization
+        batch_pythia_token_counts = []
         
         for text in batch_texts:
             try:
-                # Normalization: Tokenize with Pythia tokenizer first, then decode and re-tokenize
-                # This ensures we're evaluating on text normalized through Pythia's tokenization
-                # Following Wei et al. 2023 normalization approach
-                
-                # Step 1: Tokenize with Pythia tokenizer (normalization step)
                 pythia_encodings = pythia_tokenizer(
                     text,
                     return_tensors="pt",
@@ -259,17 +172,13 @@ def compute_normalized_perplexity(
                 )
                 pythia_input_ids = pythia_encodings["input_ids"]
                 
-                # Count Pythia tokens (excluding special tokens for normalization)
-                # Subtract 1 because we predict one less token than input length
-                pythia_num_tokens = pythia_input_ids.shape[1] - 1
+                pythia_seq_len = pythia_input_ids.shape[1]
+                pythia_num_tokens = pythia_seq_len - 1
                 if pythia_num_tokens <= 0:
                     continue
                 
-                # Step 2: Decode Pythia tokens back to text
-                # This normalization ensures consistent tokenization baseline
                 normalized_text = pythia_tokenizer.decode(pythia_input_ids[0], skip_special_tokens=True)
                 
-                # Step 3: Tokenize normalized text with model tokenizer
                 model_encodings = model_tokenizer(
                     normalized_text,
                     return_tensors="pt",
@@ -280,72 +189,41 @@ def compute_normalized_perplexity(
                 )
                 model_input_ids = model_encodings["input_ids"].to(device)
                 
-                if model_input_ids.shape[1] < 2:
+                seq_len = model_input_ids.shape[1]
+                if seq_len < 2:
                     continue
                 
-                seq_len = model_input_ids.shape[1]
-                
-                # Process sequence (with sliding window if needed)
                 if seq_len <= max_length:
                     with torch.no_grad():
                         outputs = model(input_ids=model_input_ids, labels=model_input_ids)
-                        # Loss is computed per model token, but we normalize by Pythia tokens
-                        # Multiply by model tokens to get total loss, then normalize by Pythia tokens
                         model_num_tokens = seq_len - 1
                         if model_num_tokens > 0:
-                            total_loss_val = outputs.loss.item() * model_num_tokens
-                            batch_losses.append(total_loss_val)
-                            # Use Pythia token count for normalization (not model token count)
+                            batch_losses.append(outputs.loss.item() * model_num_tokens)
                             batch_pythia_token_counts.append(pythia_num_tokens)
                             num_valid_samples += 1
                 else:
-                    # Sliding window approach
                     window_losses = []
-                    window_model_tokens = []
-                    # For sliding window, we need to track which Pythia tokens correspond to each window
-                    # Since we can't perfectly align, we'll distribute Pythia tokens proportionally
-                    total_model_tokens_in_seq = seq_len - 1
-                    
+                    with torch.no_grad():
                     for start_idx in range(0, seq_len - max_length + 1, stride):
                         end_idx = min(start_idx + max_length, seq_len)
                         window_ids = model_input_ids[:, start_idx:end_idx]
-                        
-                        if window_ids.shape[1] < 2:
-                            continue
-                        
-                        with torch.no_grad():
+                            if window_ids.shape[1] >= 2:
                             outputs = model(input_ids=window_ids, labels=window_ids)
-                            model_num_tokens = window_ids.shape[1] - 1
-                            if model_num_tokens > 0:
-                                total_loss_val = outputs.loss.item() * model_num_tokens
-                                window_losses.append(total_loss_val)
-                                window_model_tokens.append(model_num_tokens)
-                    
+                                window_losses.append(outputs.loss.item() * (window_ids.shape[1] - 1))
                     if window_losses:
-                        total_window_loss = sum(window_losses)
-                        total_window_model_tokens = sum(window_model_tokens)
-                        # Distribute Pythia tokens proportionally across windows
-                        if total_window_model_tokens > 0:
-                            # Proportion of Pythia tokens for this sequence
-                            pythia_proportion = total_window_model_tokens / total_model_tokens_in_seq if total_model_tokens_in_seq > 0 else 1.0
-                            pythia_tokens_for_window = int(pythia_num_tokens * pythia_proportion)
-                            if pythia_tokens_for_window > 0:
-                                batch_losses.append(total_window_loss)
-                                batch_pythia_token_counts.append(pythia_tokens_for_window)
-                                num_valid_samples += 1
+                        batch_losses.append(sum(window_losses))
+                        batch_pythia_token_counts.append(pythia_num_tokens)
+                        num_valid_samples += 1
                             
             except Exception as e:
                 print(f"Error processing {language} sample {batch_idx}: {e}")
                 continue
         
-        # Accumulate losses and Pythia token counts
         if batch_losses:
             for loss, pythia_tokens in zip(batch_losses, batch_pythia_token_counts):
                 total_loss += loss
                 total_pythia_tokens += pythia_tokens
     
-    # Compute average loss and perplexity
-    # Normalize by Pythia tokens (not model tokens) for fair comparison across tokenizers
     if total_pythia_tokens > 0:
         avg_loss = total_loss / total_pythia_tokens
         perplexity = np.exp(avg_loss)
@@ -356,7 +234,7 @@ def compute_normalized_perplexity(
     results = {
         "language": language,
         "num_samples": num_valid_samples,
-        "total_pythia_tokens": total_pythia_tokens,  # Pythia tokens used for normalization
+        "total_pythia_tokens": total_pythia_tokens,
         "average_loss": avg_loss,
         "perplexity": perplexity
     }
@@ -377,33 +255,13 @@ def evaluate_all_languages(
     cache_dir: Optional[str] = None,
     dataset_name: str = "cultura_x"
 ) -> Dict:
-    """Evaluate perplexity on all specified languages.
-    
-    Args:
-        model_path: Path to model to evaluate
-        languages: List of language codes (None = all languages)
-        split: Dataset split to use
-        max_samples_per_lang: Maximum samples per language
-        batch_size: Batch size for evaluation
-        max_length: Maximum sequence length
-        device: Device to use
-        cache_dir: Cache directory
-        dataset_name: CulturaX dataset name
-        trial_id: Trial ID for multiple runs
-    
-    Returns:
-        Dictionary with results organized by resource level
-    """
     if languages is None:
         languages = ALL_LANGUAGES
     
-    # Load Pythia tokenizer for normalization
     pythia_tokenizer = load_pythia_tokenizer(cache_dir=cache_dir)
     
-    # Load model
     model, model_tokenizer = load_model_and_tokenizer(model_path, device=device, cache_dir=cache_dir)
     
-    # Evaluate each language
     all_results = {}
     results_by_resource = {
         "high": {},
@@ -412,18 +270,11 @@ def evaluate_all_languages(
     }
     
     for language in languages:
-        # Determine resource level
-        resource_level = None
-        for level, langs in LANGUAGE_RESOURCES.items():
-            if language in langs:
-                resource_level = level
-                break
-        
+        resource_level = LANGUAGE_TO_RESOURCE.get(language)
         if resource_level is None:
             print(f"Warning: Language {language} not in resource level mapping, skipping")
             continue
         
-        # Load texts
         texts = load_culturax_language(
             language=language,
             split=split,
@@ -436,7 +287,6 @@ def evaluate_all_languages(
             print(f"Warning: No texts loaded for {language}, skipping")
             continue
         
-        # Compute perplexity
         results = compute_normalized_perplexity(
             model=model,
             model_tokenizer=model_tokenizer,
@@ -451,14 +301,12 @@ def evaluate_all_languages(
         all_results[language] = results
         results_by_resource[resource_level][language] = results
     
-    # Compute averages by resource level
     for level in ["high", "medium", "low"]:
         if results_by_resource[level]:
             perplexities = [r["perplexity"] for r in results_by_resource[level].values()]
             avg_perplexity = np.mean(perplexities)
             results_by_resource[level]["_average"] = avg_perplexity
     
-    # Compute overall average
     all_perplexities = [r["perplexity"] for r in all_results.values()]
     overall_avg = np.mean(all_perplexities) if all_perplexities else None
     
@@ -477,53 +325,30 @@ def evaluate_all_languages(
 
 
 def save_results(results: Dict, output_dir: str):
-    """Save results to JSON and CSV files."""
     os.makedirs(output_dir, exist_ok=True)
     
-    # Save detailed JSON
     model_name = os.path.basename(results["model_path"])
     filename = f"culturax_perplexity_results_{model_name}.json"
-    
     json_path = os.path.join(output_dir, filename)
+    
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
-    
     print(f"\nResults saved to {json_path}")
     
-    # Create summary table (CSV)
-    csv_data = []
-    
-    # Add header row
-    header = ["Model", "Resource Level", "Language", "Perplexity"]
-    csv_data.append(header)
-    
-    # Add data rows
-    model_name = os.path.basename(results["model_path"])
-    
+    csv_rows = []
     for level in ["high", "medium", "low"]:
         for lang, lang_results in results["by_resource"][level].items():
-            if lang == "_average":
-                continue
-            csv_data.append([model_name, level.capitalize(), lang, f"{lang_results['perplexity']:.4f}"])
-        
-        # Add average row
+            if lang != "_average":
+                csv_rows.append([model_name, level.capitalize(), lang, f"{lang_results['perplexity']:.4f}"])
         if "_average" in results["by_resource"][level]:
-            csv_data.append([
-                model_name,
-                level.capitalize(),
-                "Average",
-                f"{results['by_resource'][level]['_average']:.4f}"
-            ])
+            csv_rows.append([model_name, level.capitalize(), "Average", 
+                           f"{results['by_resource'][level]['_average']:.4f}"])
     
-    # Add overall average
     if results["overall_average"] is not None:
-        csv_data.append([model_name, "Overall", "Average", f"{results['overall_average']:.4f}"])
+        csv_rows.append([model_name, "Overall", "Average", f"{results['overall_average']:.4f}"])
     
-    # Save CSV
-    csv_filename = filename.replace(".json", ".csv")
-    csv_path = os.path.join(output_dir, csv_filename)
-    
-    df = pd.DataFrame(csv_data[1:], columns=csv_data[0])
+    csv_path = os.path.join(output_dir, filename.replace(".json", ".csv"))
+    df = pd.DataFrame(csv_rows, columns=["Model", "Resource Level", "Language", "Perplexity"])
     df.to_csv(csv_path, index=False)
     print(f"Summary table saved to {csv_path}")
     
@@ -531,7 +356,6 @@ def save_results(results: Dict, output_dir: str):
 
 
 def print_results_table(results: Dict):
-    """Print results in a formatted table."""
     print("\n" + "="*80)
     print("CulturaX Normalized Perplexity Results")
     print("="*80)
@@ -541,7 +365,6 @@ def print_results_table(results: Dict):
     print(f"Full Path: {results['model_path']}")
     print()
     
-    # Print by resource level
     for level in ["high", "medium", "low"]:
         level_name = level.capitalize() + " Resource"
         print(f"\n{level_name}:")
@@ -567,7 +390,6 @@ def main():
         description="Evaluate normalized perplexity on CulturaX dataset"
     )
     
-    # Model selection: either baseline, experiment, or custom path
     parser.add_argument(
         "--baseline",
         action="store_true",
@@ -645,8 +467,6 @@ def main():
     )
     args = parser.parse_args()
     
-    # Determine model path
-    # Priority: --model_path > --baseline/--experiment
     if args.model_path:
         model_path = args.model_path
         print(f"Using custom model path: {model_path}")
@@ -655,20 +475,17 @@ def main():
         print(f"Using baseline model: {model_path}")
     elif args.experiment is not None:
         if args.experiment == "default":
-            # Default to S2 checkpoint-2500 (final trained model)
             script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             model_path = os.path.join(script_dir, "log/1b/0_qwen2-7b_S2/checkpoint-2500")
         else:
             model_path = args.experiment
         print(f"Using experiment model: {model_path}")
     else:
-        raise ValueError("Must specify either --baseline, --experiment, or --model_path")
+        parser.error("Must specify either --baseline, --experiment, or --model_path")
     
-    # Check if model path exists (for local paths)
     if not model_path.startswith(("http://", "https://")) and not os.path.exists(model_path) and "/" in model_path and not model_path.startswith("EleutherAI/") and not model_path.startswith("Qwen/"):
         print(f"Warning: Model path {model_path} does not exist. It will be loaded from HuggingFace if it's a model ID.")
     
-    # Evaluate
     results = evaluate_all_languages(
         model_path=model_path,
         languages=args.languages,
@@ -681,10 +498,8 @@ def main():
         dataset_name=args.dataset_name
     )
     
-    # Print results
     print_results_table(results)
     
-    # Save results
     save_results(results, args.output_dir)
     
     print(f"\nEvaluation complete! Results saved to {args.output_dir}")
