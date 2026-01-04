@@ -279,6 +279,12 @@ def create_and_prepare_model(args):
         trust_remote_code=True,
     )
 
+    # Clear GPU cache after model loading to reduce fragmentation
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        print(f"GPU memory after model load: {torch.cuda.memory_allocated()/1024**3:.2f} GB allocated, "
+              f"{torch.cuda.memory_reserved()/1024**3:.2f} GB reserved")
+
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path if args.tokenizer_path is not None else args.model_name, trust_remote_code=True)
     tokenizer.pad_token = tokenizer.eos_token
 

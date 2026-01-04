@@ -100,6 +100,10 @@ LOG_FILE="${MAIN_DIR}/log/${PREFIX}.log"
 
 mkdir -p $MODEL_DIR
 
+# Set PyTorch CUDA allocator to use expandable segments to reduce fragmentation
+# This helps prevent OOM errors when resuming from checkpoints
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
 accelerate launch \
     --config_file ${CONFIG_FILE} \
     --main_process_port ${MASTER_PORT} \

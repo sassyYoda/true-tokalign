@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 import os
 import subprocess
 from typing import Optional
+import torch
 
 from transformers import HfArgumentParser, TrainingArguments, Trainer
 from clm_utils import *
@@ -229,6 +230,13 @@ def main(args):
 
     if args.use_peft_lora:
         peft_module_casting_to_bf16(trainer.model, args)
+    
+    # Clear GPU cache before training to reduce memory fragmentation
+    # This is especially important when resuming from checkpoints (e.g., STAGE-2)
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        print(f"GPU memory before training: {torch.cuda.memory_allocated()/1024**3:.2f} GB allocated, "
+              f"{torch.cuda.memory_reserved()/1024**3:.2f} GB reserved")
     
     checkpoint = None
     if args.resume_from_checkpoint is not None:

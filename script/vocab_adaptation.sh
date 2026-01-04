@@ -52,40 +52,53 @@ fi
 MODEL_DIR="${MAIN_DIR}/log/$PREFIX"
 LOG_FILE="${MAIN_DIR}/log/${PREFIX}.log"
 
-mkdir -p $MODEL_DIR
+# Check if STAGE-1 is already complete
+STAGE1_CHECKPOINT="${MAIN_DIR}/log/${MODEL}/${SEED}_${TGT}_S1/checkpoint-${NUM_STEPS}"
+if [ -d "${STAGE1_CHECKPOINT}" ]; then
+    echo "STAGE-1 checkpoint already exists at ${STAGE1_CHECKPOINT}"
+    echo "Skipping STAGE-1 training..."
+else
+    echo "Starting STAGE-1 training..."
+    mkdir -p $MODEL_DIR
 
-
-accelerate launch \
-    --config_file ${CONFIG_FILE} \
-    --main_process_port ${MASTER_PORT} \
-    --num_processes ${GPUNUM} \
-    --num_machines 1 src/clm_train.py \
-    --model_name ${MODEL_NAME} \
-    --tokenizer_path ${MODEL_NAME} \
-    --dataset_name ${DATASET_PATH} \
-    --max_seq_length ${BLOCK_SIZE} \
-    --max_steps ${NUM_STEPS} \
-    --logging_steps ${LOGGING_STEPS} \
-    --save_steps ${NUM_SAVE_STEPS} \
-    --num_workers ${NUM_WORKERS} \
-    --bf16 True \
-    --packing True \
-    --output_dir ${MODEL_DIR} \
-    --per_device_train_batch_size ${TRAIN_BS} \
-    --gradient_accumulation_steps ${GRADIENT_ACC} \
-    --use_gradient_checkpointing \
-    --learning_rate ${LR}  \
-    --lr_scheduler_type "cosine" \
-    --weight_decay 0.01 \
-    --ignore_data_skip True \
-    --train_start_idx ${TRAIN_START_IDX} \
-    ${ADD_PARAMETERS} \
-    --warmup_ratio 0.03 \
-    --finetune_embed_only True \
-    --use_flash_attn True 2>&1 >$LOG_FILE
+    accelerate launch \
+        --config_file ${CONFIG_FILE} \
+        --main_process_port ${MASTER_PORT} \
+        --num_processes ${GPUNUM} \
+        --num_machines 1 src/clm_train.py \
+        --model_name ${MODEL_NAME} \
+        --tokenizer_path ${MODEL_NAME} \
+        --dataset_name ${DATASET_PATH} \
+        --max_seq_length ${BLOCK_SIZE} \
+        --max_steps ${NUM_STEPS} \
+        --logging_steps ${LOGGING_STEPS} \
+        --save_steps ${NUM_SAVE_STEPS} \
+        --num_workers ${NUM_WORKERS} \
+        --bf16 True \
+        --packing True \
+        --output_dir ${MODEL_DIR} \
+        --per_device_train_batch_size ${TRAIN_BS} \
+        --gradient_accumulation_steps ${GRADIENT_ACC} \
+        --use_gradient_checkpointing \
+        --learning_rate ${LR}  \
+        --lr_scheduler_type "cosine" \
+        --weight_decay 0.01 \
+        --ignore_data_skip True \
+        --train_start_idx ${TRAIN_START_IDX} \
+        ${ADD_PARAMETERS} \
+        --warmup_ratio 0.03 \
+        --finetune_embed_only True \
+        --use_flash_attn True 2>&1 >$LOG_FILE
+    
+    # Verify STAGE-1 completed successfully
+    if [ ! -d "${STAGE1_CHECKPOINT}" ]; then
+        echo "Error: STAGE-1 checkpoint not found at ${STAGE1_CHECKPOINT}"
+        echo "STAGE-1 must complete successfully before running STAGE-2."
+        exit 1
+    fi
+fi
 
 # STAGE-2 (only run if STAGE-1 checkpoint exists)
-STAGE1_CHECKPOINT="${MAIN_DIR}/log/${MODEL}/${SEED}_${TGT}_S1/checkpoint-${NUM_STEPS}"
 if [ ! -d "${STAGE1_CHECKPOINT}" ]; then
     echo "Error: STAGE-1 checkpoint not found at ${STAGE1_CHECKPOINT}"
     echo "STAGE-1 must complete successfully before running STAGE-2."
@@ -105,7 +118,28 @@ LOG_FILE="${MAIN_DIR}/log/${PREFIX}.log"
 
 mkdir -p $MODEL_DIR
 
-echo "Starting STAGE-2 training from checkpoint: ${MODEL_NAME}"
+# Check if STAGE-2 is already complete
+STAGE2_CHECKPOINT="${MODEL_DIR}/checkpoint-${NUM_STEPS}"
+if [ -d "${STAGE2_CHECKPOINT}" ]; then
+    echo "STAGE-2 checkpoint already exists at ${STAGE2_CHECKPOINT}"
+    echo "STAGE-2 training is already complete!"
+    exit 0
+fi
+
+# Check for existing STAGE-2 checkpoints to resume from
+# Find the latest checkpoint directory (checkpoint-*)
+LATEST_CHECKPOINT=$(ls -d ${MODEL_DIR}/checkpoint-* 2>/dev/null | sort -V | tail -1)
+if [ -n "${LATEST_CHECKPOINT}" ] && [ -d "${LATEST_CHECKPOINT}" ]; then
+    echo "Found existing STAGE-2 checkpoint: ${LATEST_CHECKPOINT}"
+    echo "Resuming STAGE-2 training from checkpoint: ${LATEST_CHECKPOINT}"
+    ADD_PARAMETERS="${ADD_PARAMETERS} --resume_from_checkpoint ${LATEST_CHECKPOINT}"
+else
+    echo "Starting STAGE-2 training from checkpoint: ${MODEL_NAME}"
+fi
+
+# Set PyTorch CUDA allocator to use expandable segments to reduce fragmentation
+# This helps prevent OOM errors when resuming from checkpoints
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 accelerate launch \
     --config_file ${CONFIG_FILE} \
