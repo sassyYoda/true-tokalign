@@ -107,19 +107,19 @@ def load_culturax_language(
     for use_lang_config in [True, False]:
         try:
             if use_lang_config:
-            dataset = load_dataset(
+                dataset = load_dataset(
                     dataset_name, language, split=split,
                     cache_dir=cache_dir, trust_remote_code=True, streaming=True
-            )
+                )
                 texts, processed = _extract_texts(dataset, language, max_samples)
-        print(f"Extracted {len(texts)} valid {language} texts from {processed} processed examples (streaming mode)")
+                print(f"Extracted {len(texts)} valid {language} texts from {processed} processed examples (streaming mode)")
             else:
-            dataset = load_dataset(
+                dataset = load_dataset(
                     dataset_name, split=split,
                     cache_dir=cache_dir, trust_remote_code=True, streaming=True
-            )
+                )
                 texts, _ = _extract_texts(dataset, language, max_samples)
-            print(f"Extracted {len(texts)} valid {language} texts (alternative streaming method)")
+                print(f"Extracted {len(texts)} valid {language} texts (alternative streaming method)")
             return texts
         except Exception as e:
             if use_lang_config:
@@ -127,10 +127,10 @@ def load_culturax_language(
                 print("Trying alternative loading method with streaming...")
             else:
                 print(f"Failed to load CulturaX {language} with streaming: {e}")
-            print("Note: CulturaX may download metadata/index files on first run.")
-            print("Subsequent runs will be faster as files are cached.")
+                print("Note: CulturaX may download metadata/index files on first run.")
+                print("Subsequent runs will be faster as files are cached.")
     
-            return []
+    return []
 
 
 def compute_normalized_perplexity(
@@ -204,11 +204,11 @@ def compute_normalized_perplexity(
                 else:
                     window_losses = []
                     with torch.no_grad():
-                    for start_idx in range(0, seq_len - max_length + 1, stride):
-                        end_idx = min(start_idx + max_length, seq_len)
-                        window_ids = model_input_ids[:, start_idx:end_idx]
+                        for start_idx in range(0, seq_len - max_length + 1, stride):
+                            end_idx = min(start_idx + max_length, seq_len)
+                            window_ids = model_input_ids[:, start_idx:end_idx]
                             if window_ids.shape[1] >= 2:
-                            outputs = model(input_ids=window_ids, labels=window_ids)
+                                outputs = model(input_ids=window_ids, labels=window_ids)
                                 window_losses.append(outputs.loss.item() * (window_ids.shape[1] - 1))
                     if window_losses:
                         batch_losses.append(sum(window_losses))
