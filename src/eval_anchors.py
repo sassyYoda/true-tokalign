@@ -32,7 +32,7 @@ if __name__ == '__main__':
     parser.add_argument("-e", "--evaluate-method", type=str, default="both", 
                        choices=["bleu", "bert-score", "bertscore", "both", "all"],
                        help="Evaluation method: 'bleu', 'bert-score', or 'both'")
-    parser.add_argument("-f", "--eval-file-path", type=str, default="./data/pretrain-dataset/pythia-2-qwen2-7b-MX1K-eval")
+    parser.add_argument("-f", "--eval-file-path", type=str, default="./data/pretrain-dataset/pythia-2-qwen2-7b-glove-eval-mix")
     parser.add_argument("-t", "--tokenizer-path", type=str, default="EleutherAI/pythia-1b",
                        help="Source tokenizer path (for de-tokenization)")
     parser.add_argument("--target-tokenizer-path", type=str, default=None,
