@@ -39,7 +39,7 @@ fi
 echo "=========================================="
 
 # Build command
-CMD="python src/prepare_pile_corpus.py \
+CMD="python datasets/prepare_pile_corpus.py \
     --output-path ${OUTPUT_PATH} \
     --dataset-name ${DATASET_NAME} \
     --split ${SPLIT} \

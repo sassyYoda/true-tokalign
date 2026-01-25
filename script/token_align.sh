@@ -47,7 +47,7 @@ python src/count_dict.py \
     -t ${TOKENIZER_PATH2} \
     -o ${TGT_ID_2_SRC_ID_GOLD_PATH}
 
-python src/cal_trans_matrix.py \
+python original_tokalign/cal_trans_matrix.py \
     -s ${GLOVE_VECTOR_PATH1} \
     -s1 ${VOCAB_SIZE1} \
     -t ${GLOVE_VECTOR_PATH2} \

@@ -15,7 +15,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Import evaluation functions from eval_matrix.py
-from eval_matrix import eval_trans_matrix, eval_bert_score
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from original_tokalign.eval_matrix import eval_trans_matrix, eval_bert_score
 
 def extract_anchor_num_from_filename(filename):
     """Extract anchor number from filename like 'alignment_matrix_anchors_300.json'"""

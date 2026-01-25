@@ -47,7 +47,7 @@ echo "=========================================="
 echo ""
 
 # Build command
-CMD="python src/eval_perplexity.py \
+CMD="python eval/eval_perplexity.py \
     --model_path ${MODEL_PATH} \
     --corpus_name ${CORPUS_NAME} \
     --split ${SPLIT} \

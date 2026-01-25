@@ -61,7 +61,7 @@ accelerate launch \
     --config_file ${CONFIG_FILE} \
     --main_process_port ${MASTER_PORT} \
     --num_processes ${GPUNUM} \
-    --num_machines 1 src/clm_train.py \
+    --num_machines 1 original_tokalign/clm_train.py \
     --model_name ${MODEL_NAME} \
     --tokenizer_path ${MODEL_NAME} \
     --dataset_name ${DATASET_PATH} \
@@ -108,7 +108,7 @@ accelerate launch \
     --config_file ${CONFIG_FILE} \
     --main_process_port ${MASTER_PORT} \
     --num_processes ${GPUNUM} \
-    --num_machines 1 src/clm_train.py \
+    --num_machines 1 original_tokalign/clm_train.py \
     --model_name ${MODEL_NAME} \
     --tokenizer_path ${MODEL_NAME} \
     --dataset_name ${DATASET_PATH} \

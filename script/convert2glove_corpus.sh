@@ -30,7 +30,7 @@ export NUM_WORKERS=48
 
 tokenize () {
   HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-  python -u src/process_dataset.py \
+  python -u original_tokalign/process_dataset.py \
     --model_name_or_path ${MODLE_PATH} \
     --tokenizer_name ${TOKENIZER_PATH} \
     --train_file ${TRAIN_FILE} \

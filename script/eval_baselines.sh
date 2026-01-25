@@ -50,7 +50,7 @@ eval_matrix() {
     echo "Matrix path: $matrix_path"
     echo "------------------------------------------"
     
-    python src/eval_matrix.py \
+    python original_tokalign/eval_matrix.py \
         -e ${EVAL_METHOD} \
         -m ${matrix_path} \
         -f ${MATRIX_EVAL_DATA_PATH} \

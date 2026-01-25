@@ -20,7 +20,7 @@ export OUTPUT_DIR="${MAIN_DIR}/data/evaluation_results"
 export BERTSCORE_BATCH_SIZE=32  # Optimized: model loaded once, can use larger batches
 
 # Run both BLEU and BERTScore evaluations
-python src/eval_matrix.py \
+python original_tokalign/eval_matrix.py \
     -e ${EVAL_METHOD} \
     -m ${TGT_ID_2_SRC_ID_RES_PATH} \
     -f ${MATRIX_EVAL_DATA_PATH} \
@@ -35,7 +35,7 @@ python src/eval_matrix.py \
 if [ -f "${OUTPUT_DIR}/evaluation_results.json" ]; then
     echo ""
     echo "Generating evaluation plots..."
-    python src/plot_evaluation_results.py \
+    python plots/plot_evaluation_results.py \
         --results-file ${OUTPUT_DIR}/evaluation_results.json \
         --output-dir ${MAIN_DIR}/figure
 else

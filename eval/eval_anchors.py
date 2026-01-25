@@ -5,7 +5,10 @@ import glob
 from tqdm import tqdm
 
 # Import evaluation functions from eval_matrix.py
-from eval_matrix import eval_trans_matrix, eval_bert_score
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from original_tokalign.eval_matrix import eval_trans_matrix, eval_bert_score
 
 def extract_seed_from_filename(filename):
     """Extract seed number from filename like 'alignment_matrix_seed_5.json'"""

@@ -6,7 +6,10 @@ import argparse
 import os
 
 # Import functions from cal_trans_matrix.py
-from cal_trans_matrix import (
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from original_tokalign.cal_trans_matrix import (
     load_glove_model,
     convert2matrix,
     top_k_indices,

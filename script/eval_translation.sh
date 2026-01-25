@@ -55,7 +55,7 @@ echo "=========================================="
 echo ""
 
 # Build command
-CMD="python src/eval_translation.py \
+CMD="python eval/eval_translation.py \
     --model_path ${MODEL_PATH} \
     --dataset_split ${DATASET_SPLIT} \
     --output_dir ${OUTPUT_DIR} \

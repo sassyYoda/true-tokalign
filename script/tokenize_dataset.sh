@@ -38,7 +38,7 @@ echo "Workers: ${NUM_WORKERS}"
 echo "=========================================="
 echo ""
 
-python -u src/process_dataset.py \
+python -u original_tokalign/process_dataset.py \
   --model_name_or_path ${MODEL_PATH} \
   --tokenizer_name ${TOKENIZER_PATH} \
   --train_file ${TRAIN_FILE} \

@@ -40,7 +40,7 @@ echo "Proof-Pile-2 ratio: ${PROOF_PILE_RATIO}"
 echo "Tokenizer: ${TOKENIZER_NAME}"
 echo "=========================================="
 
-python src/prepare_glove_corpus.py \
+python datasets/prepare_glove_corpus.py \
     --output-path ${OUTPUT_PATH} \
     --total-tokens ${TOTAL_TOKENS} \
     --culturax-ratio ${CULTURAX_RATIO} \

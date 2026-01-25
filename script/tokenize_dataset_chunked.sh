@@ -115,7 +115,7 @@ if [ "${PARALLEL_CHUNKS}" -eq 1 ]; then
         
         echo "  Processing chunk ${CHUNK_NUM}/${NUM_CHUNKS}: ${CHUNK_NAME}"
         
-        if HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -u src/process_dataset.py \
+        if HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -u original_tokalign/process_dataset.py \
             --model_name_or_path ${MODLE_PATH} \
             --tokenizer_name ${TOKENIZER_PATH} \
             --train_file ${CHUNK_FILE} \
@@ -161,7 +161,7 @@ else
         
         # Start chunk processing in background
         (
-            HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -u src/process_dataset.py \
+            HF_DATASETS_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python -u original_tokalign/process_dataset.py \
                 --model_name_or_path ${MODLE_PATH} \
                 --tokenizer_name ${TOKENIZER_PATH} \
                 --train_file ${CHUNK_FILE} \
@@ -204,7 +204,7 @@ echo ""
 
 # Step 3: Concatenate all chunks
 echo "Step 3: Concatenating tokenized chunks..."
-python -u src/concatenate_datasets.py \
+python -u datasets/concatenate_datasets.py \
     --input-dir ${CHUNK_OUTPUT_DIR} \
     --output-path ${DATASET_PATH} \
     2>&1 | tee ./log/concatenate_datasets.log
