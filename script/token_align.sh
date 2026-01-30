@@ -39,10 +39,10 @@ mv ${GLOVE_VECTOR_NAME2}.txt ${GLOVE_VECTOR_PATH2}
 # Stage-2: token ID align
 cd ${MAIN_DIR}
 
-export VOCAB_SIZE1=$(python src/count_vocab.py -m ${MODLE_PATH1})
-export VOCAB_SIZE2=$(python src/count_vocab.py -m ${MODLE_PATH2})
+export VOCAB_SIZE1=$(python original_tokalign/count_vocab.py -m ${MODLE_PATH1})
+export VOCAB_SIZE2=$(python original_tokalign/count_vocab.py -m ${MODLE_PATH2})
 
-python src/count_dict.py \
+python original_tokalign/count_dict.py \
     -s ${TOKENIZER_PATH1} \
     -t ${TOKENIZER_PATH2} \
     -o ${TGT_ID_2_SRC_ID_GOLD_PATH}

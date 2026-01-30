@@ -14,7 +14,7 @@ export TOKENIZER_PATH2="Qwen/Qwen2-7B"
 
 export OUTPUT_PATH="${MAIN_DIR}/data/pythia2qwen2-7b/TokAlign-Init-1B"
 
-python src/convert.py \
+python original_tokalign/convert.py \
     -m ${TGT_ID_2_SRC_ID_RES_PATH} \
     -s ${MODLE_PATH1} \
     -t ${TOKENIZER_PATH2} \

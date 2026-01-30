@@ -24,7 +24,7 @@ echo "Output directory: ${OUTPUT_DIR}"
 echo "Seed: ${SEED}"
 echo "=========================================="
 
-python src/generate_random_baselines.py \
+python baselines/generate_random_baselines.py \
     -s ${SOURCE_TOKENIZER} \
     -t ${TARGET_TOKENIZER} \
     -o ${OUTPUT_DIR} \

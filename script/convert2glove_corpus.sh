@@ -63,7 +63,7 @@ MAX_LINE_EVAL=1000
 # Stage-2: extract token-ID corpus to train GloVe vector and evaluate the one-to-one mapping matrix learned.
 
 printf "\n### Extract token IDs from ${DATASET_PATH1} for GloVe Training. ###\n\n"
-python src/convert2glove_train.py \
+python original_tokalign/convert2glove_train.py \
   -s $DATASET_PATH1 \
   -k train \
   -m ${MIN_LEN} \
@@ -71,7 +71,7 @@ python src/convert2glove_train.py \
   -o ${GLOVE_TRAIN_PATH1}
 
 printf "\n### Extract token IDs from ${DATASET_PATH2} for GloVe Training. ###\n\n"
-python src/convert2glove_train.py \
+python original_tokalign/convert2glove_train.py \
   -s $DATASET_PATH2 \
   -k train \
   -m ${MIN_LEN} \
@@ -81,7 +81,7 @@ python src/convert2glove_train.py \
 MIN_LEN=10
 
 printf "\n### Extract aligned token IDs from source token IDs (${DATASET_PATH1}) and target token IDs (${DATASET_PATH2}) for matrix evaluation. ###\n\n"
-python src/convert2glove_train.py \
+python original_tokalign/convert2glove_train.py \
   -s $DATASET_PATH1 \
   -t $DATASET_PATH2 \
   -k validation \
