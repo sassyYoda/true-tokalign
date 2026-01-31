@@ -32,20 +32,24 @@ def generate_alignment_matrix(
 
     td = {}
     tids = [str(tid) for tid in range(g_vocab_len1)]
-    supl_id = 0
+    gold_count = 0
+    random_count = 0
+    similarity_count = 0
+    
     for tid in tqdm(tids, desc="Get the max prob target idx"):
         # gold label
         if tid in t2l_supl:
             td[tid] = t2l_supl[tid]
-            supl_id += 1
+            gold_count += 1
             continue
 
         # missing token id: random pick
         if tid not in ids1:
             td[tid] = random.randint(0, g_vocab_len2-1)
-            supl_id += 1
+            random_count += 1
             continue
 
+        # Use similarity matrix
         id1_idx = ids1.index(tid)
         lix = np.argmax(sim[id1_idx])
         lid = ids2[lix]
@@ -56,8 +60,16 @@ def generate_alignment_matrix(
             lid = ids2[lix.pop()]
 
         td[tid] = int(lid)
+        similarity_count += 1
 
-    print(f"{supl_id} ids are suppled with gold transition dictionary.")
+    total = len(tids)
+    print(f"\nAlignment statistics:")
+    print(f"  Total tokens: {total}")
+    print(f"  Gold mappings: {gold_count} ({100*gold_count/total:.1f}%)")
+    print(f"  Random assignments: {random_count} ({100*random_count/total:.1f}%)")
+    print(f"  Similarity-based: {similarity_count} ({100*similarity_count/total:.1f}%)")
+    print(f"  Note: Only similarity-based tokens use the relative representation!")
+    
     return td
 
 if __name__ == '__main__':
