@@ -29,7 +29,17 @@ def generate_alignment_matrix(
 ):
     """Generate alignment matrix from relative representations."""
     sim = np.matmul(rep1, rep2.T)
-
+    
+    # Debug: Verify similarity matrix dimensions
+    print(f"\nSimilarity matrix shape: {sim.shape}")
+    print(f"Expected: ({len(ids1)}, {len(ids2)})")
+    
+    # Debug: Sample some similarity values to verify they're reasonable
+    if sim.size > 0:
+        print(f"Similarity matrix stats:")
+        print(f"  Min: {sim.min():.4f}, Max: {sim.max():.4f}, Mean: {sim.mean():.4f}")
+        print(f"  Sample values (first 5x5):\n{sim[:5, :5]}")
+    
     td = {}
     tids = [str(tid) for tid in range(g_vocab_len1)]
     gold_count = 0
@@ -122,6 +132,13 @@ if __name__ == '__main__':
             num_pivot=num_anchors,
             seed=args.seed
         )
+        
+        # Debug: Verify dimensions
+        print(f"Relative representation dimensions:")
+        print(f"  rep1 shape: {rep1.shape} (should be (vocab_size, {num_anchors}))")
+        print(f"  rep2 shape: {rep2.shape} (should be (vocab_size, {num_anchors}))")
+        print(f"  ids1 length: {len(ids1)}")
+        print(f"  ids2 length: {len(ids2)}")
 
         # Generate alignment matrix
         td = generate_alignment_matrix(
