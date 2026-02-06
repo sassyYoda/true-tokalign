@@ -17,6 +17,19 @@ def load_glove_model(File):
     print(f"{len(glove_model)} words loaded!")
     return glove_model
 
+def load_fasttext_model(File):
+    print("Loading FastText Model")
+    fasttext_model = {}
+    with open(File,'r') as f:
+        header = f.readline()
+        for line in f:
+            split_line = line.split()
+            word = split_line[0]
+            embedding = np.array(split_line[1:], dtype=np.float64)
+            fasttext_model[word] = embedding
+    print(f"{len(fasttext_model)} words loaded!")
+    return fasttext_model
+
 def normalize(x):
     return x / np.linalg.norm(x)
 
