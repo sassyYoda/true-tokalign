@@ -23,6 +23,24 @@ export TGT_ID_2_SRC_ID_RES_PATH="${MAIN_DIR}/data/pythia2qwen2-7b/align_matrix_f
 
 # Stage-1: train FastText vectors
 cd ${FASTTEXT_DIR}
+
+# Check if FastText is built (binary exists)
+if [ ! -f "./build/fasttext" ] && [ ! -f "./fasttext" ]; then
+    echo "Error: FastText binary not found!"
+    echo "Please build FastText first using one of these methods:"
+    echo ""
+    echo "Method 1 (build binary, recommended):"
+    echo "  cd ${FASTTEXT_DIR}"
+    echo "  mkdir -p build && cd build && cmake .. && make"
+    echo "  (Note: Skip 'make install' - it's not needed)"
+    echo ""
+    echo "Method 2 (pip install):"
+    echo "  cd ${FASTTEXT_DIR}"
+    echo "  pip install ."
+    echo ""
+    exit 1
+fi
+
 FASTTEXT_VECTOR_NAME1=$(basename ${FASTTEXT_VECTOR_PATH1})
 FASTTEXT_VECTOR_NAME1="${FASTTEXT_VECTOR_NAME1%.*}"
 printf "\n### Train FastText vector ${FASTTEXT_VECTOR_NAME1} with ${FASTTEXT_TRAIN_PATH1}  ###\n\n"

@@ -5,6 +5,10 @@ set -e
 #
 # Trains a FastText model using the same corpus format as GloVe
 # FastText repository should be cloned as a sibling directory and built
+# 
+# Installation options:
+#   1. Build binary: cd fastText && mkdir build && cd build && cmake .. && make
+#   2. Install via pip: cd fastText && pip install .
 
 CORPUS=$1
 SAVE_FILE=$2
@@ -14,16 +18,37 @@ NUM_THREADS=64
 WINDOW_SIZE=15
 EPOCH=15
 
-# FastText binary path (should be in current directory when script is called)
-# This script is called from token_align_fasttext.sh after cd'ing to FASTTEXT_DIR
-FASTTEXT_BIN="./fasttext"
+# Try to find FastText binary (built version)
+# Check in build directory first, then current directory
+if [ -f "./build/fasttext" ]; then
+    FASTTEXT_BIN="./build/fasttext"
+elif [ -f "./fasttext" ]; then
+    FASTTEXT_BIN="./fasttext"
+else
+    # If binary not found, try using Python API (if pip installed)
+    echo "FastText binary not found, trying Python API..."
+    python3 << EOF
+import fasttext
+import sys
 
-# Check if FastText binary exists
-if [ ! -f "$FASTTEXT_BIN" ]; then
-    echo "Error: FastText binary not found at $FASTTEXT_BIN"
-    echo "Please build FastText first:"
-    echo "  cd <fastText_directory> && make"
-    exit 1
+model = fasttext.train_unsupervised(
+    '$CORPUS',
+    model='skipgram',
+    dim=$VECTOR_SIZE,
+    minCount=$MIN_COUNT,
+    thread=$NUM_THREADS,
+    ws=$WINDOW_SIZE,
+    epoch=$EPOCH
+)
+
+# Save model (will create .bin and .vec files)
+model.save_model('${SAVE_FILE}.bin')
+
+print("FastText training completed via Python API!")
+print("  Model saved to: ${SAVE_FILE}.bin")
+print("  Vectors saved to: ${SAVE_FILE}.vec")
+EOF
+    exit 0
 fi
 
 # FastText parameters
@@ -45,6 +70,7 @@ echo "  Min count: $MIN_COUNT"
 echo "  Window size: $WINDOW_SIZE"
 echo "  Epochs: $EPOCH"
 echo "  Threads: $NUM_THREADS"
+echo "  Using binary: $FASTTEXT_BIN"
 echo
 
 # FastText command - skipgram model (similar to GloVe)
