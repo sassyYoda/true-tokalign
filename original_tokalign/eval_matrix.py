@@ -23,6 +23,7 @@ def eval_trans_matrix(
     bleu_weights=(1, 0, 0, 0),
     verbose_bleu=False,
     verbose_n=5,
+    source_tokenizer_path=None,
 ):
     with open(trans_dict_path, "r") as f:
         trans = json.load(f)
@@ -37,6 +38,7 @@ def eval_trans_matrix(
 
     if verbose_bleu:
         print(f"Verbose BLEU: printing src and pred for first {verbose_n} examples")
+        source_tok = AutoTokenizer.from_pretrained(source_tokenizer_path or "EleutherAI/pythia-1b")
 
     total_b = 0
     total_b1 = 0  # BLEU-1 only
@@ -53,9 +55,18 @@ def eval_trans_matrix(
         
         b = sentence_bleu([src], pred, bleu_weights)
         if verbose_bleu and i < verbose_n:
+            src_ids = [int(x) for x in src]
+            pred_ids = [int(x) for x in pred]
+            src_decoded = source_tok.decode(src_ids, skip_special_tokens=True)
+            pred_decoded = source_tok.decode(pred_ids, skip_special_tokens=True)
+            max_ids_show = 20
+            src_preview = src[:max_ids_show] if len(src) <= max_ids_show else src[:max_ids_show] + ["..."]
+            pred_preview = pred[:max_ids_show] if len(pred) <= max_ids_show else pred[:max_ids_show] + ["..."]
             print(f"\n--- Example {i+1} ---")
-            print(f"src (reference): {src}")
-            print(f"pred (mapped):   {pred}")
+            print(f"src (reference) IDs: {src_preview} (len={len(src)})")
+            print(f"src (reference) text: {repr(src_decoded[:200])}{'...' if len(src_decoded) > 200 else ''}")
+            print(f"pred (mapped) IDs:   {pred_preview} (len={len(pred)})")
+            print(f"pred (mapped) text:  {repr(pred_decoded[:200])}{'...' if len(pred_decoded) > 200 else ''}")
             print(f"sentence_bleu:   {b:.6f}")
         
         # Compute with specified weights (weighted average)
@@ -435,6 +446,7 @@ if __name__ == '__main__':
             bleu_weights = weights,
             verbose_bleu = getattr(args, 'verbose_bleu', False),
             verbose_n = getattr(args, 'verbose_bleu_n', 5),
+            source_tokenizer_path = args.tokenizer_path,
         )
         results["bleu"] = bleu_results
     
