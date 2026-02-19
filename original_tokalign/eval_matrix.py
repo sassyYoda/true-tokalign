@@ -21,6 +21,8 @@ def eval_trans_matrix(
     trans_dict_path="./log/pythia2qwen2-7b/glove-MX1M-iter15-d300.json", 
     eval_file_path="./data/pretrain-dataset/pythia-2-qwen2-7b-MX1K-eval",
     bleu_weights=(1, 0, 0, 0),
+    verbose_bleu=False,
+    verbose_n=5,
 ):
     with open(trans_dict_path, "r") as f:
         trans = json.load(f)
@@ -33,21 +35,31 @@ def eval_trans_matrix(
 
     tgt_len = len(list(trans.keys()))
 
+    if verbose_bleu:
+        print(f"Verbose BLEU: printing src and pred for first {verbose_n} examples")
+
     total_b = 0
     total_b1 = 0  # BLEU-1 only
     total_b2 = 0  # BLEU-2 only
     total_b3 = 0  # BLEU-3 only
     total_b4 = 0  # BLEU-4 only
     # for s in tqdm(eval_data):
-    for s in eval_data:
+    for i, s in enumerate(eval_data):
         # src: source token id, e.g., pythia ids, tgt: target token id, e.g., qwen2-7b ids
         src, tgt = s[0], s[1]
 
         # using td dict by maping target ids to source ids
         pred = [str(td[tid]) for tid in tgt]
         
+        b = sentence_bleu([src], pred, bleu_weights)
+        if verbose_bleu and i < verbose_n:
+            print(f"\n--- Example {i+1} ---")
+            print(f"src (reference): {src}")
+            print(f"pred (mapped):   {pred}")
+            print(f"sentence_bleu:   {b:.6f}")
+        
         # Compute with specified weights (weighted average)
-        total_b += sentence_bleu([src], pred, bleu_weights)
+        total_b += b
         
         # Compute individual BLEU scores
         total_b1 += sentence_bleu([src], pred, (1, 0, 0, 0))  # BLEU-1
@@ -394,6 +406,8 @@ if __name__ == '__main__':
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size for BERTScore (default: 32, model loaded once so larger batches are efficient)")
     parser.add_argument("--device", type=str, default="cuda", help="Device for BERTScore (cuda/cpu)")
     parser.add_argument("--max-examples", type=int, default=None, help="Maximum number of examples to evaluate (for testing/debugging)")
+    parser.add_argument("--verbose-bleu", action="store_true", help="Print src and pred for first N examples (for troubleshooting)")
+    parser.add_argument("--verbose-bleu-n", type=int, default=5, help="Number of examples to print when --verbose-bleu (default: 5)")
 
     args = parser.parse_args()
 
@@ -418,7 +432,9 @@ if __name__ == '__main__':
         bleu_results = eval_trans_matrix(
             trans_dict_path = args.one2one_matrix_path,
             eval_file_path = args.eval_file_path,
-            bleu_weights = weights
+            bleu_weights = weights,
+            verbose_bleu = getattr(args, 'verbose_bleu', False),
+            verbose_n = getattr(args, 'verbose_bleu_n', 5),
         )
         results["bleu"] = bleu_results
     
