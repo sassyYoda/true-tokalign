@@ -18,12 +18,18 @@ def load_glove_model(File):
     return glove_model
 
 def load_fasttext_model(File):
+    """Load FastText .vec format: first line is 'vocab_size dim', then 'word v1 v2 ...' per line."""
     print("Loading FastText Model")
     fasttext_model = {}
-    with open(File,'r') as f:
-        header = f.readline()
+    with open(File, 'r') as f:
+        header = f.readline()  # Skip "vocab_size dim"
         for line in f:
+            line = line.strip()
+            if not line:
+                continue
             split_line = line.split()
+            if len(split_line) < 2:
+                continue
             word = split_line[0]
             embedding = np.array(split_line[1:], dtype=np.float64)
             fasttext_model[word] = embedding
