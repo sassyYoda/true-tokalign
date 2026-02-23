@@ -20,9 +20,10 @@ export DATASET_PATH="./data/pretrain-dataset/pile00-${TGT}-tokenized"
 
 export CONFIG_FILE="./data/Deepspeed-Configs/zero3.yaml"
 
-export TRAIN_BS=8
+# Reduced for 22GB GPU: batch 8 OOMs with 2048 seq + 151K vocab
+export TRAIN_BS=2
 export EVAL_BS=1
-export GRADIENT_ACC=16
+export GRADIENT_ACC=64
 
 export BLOCK_SIZE=2048
 
@@ -51,6 +52,9 @@ fi
 
 MODEL_DIR="${MAIN_DIR}/log/$PREFIX"
 LOG_FILE="${MAIN_DIR}/log/${PREFIX}.log"
+
+# Reduce CUDA fragmentation (helps with OOM)
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # Check if STAGE-1 is already complete
 STAGE1_CHECKPOINT="${MAIN_DIR}/log/${MODEL}/${SEED}_${TGT}_S1/checkpoint-${NUM_STEPS}"
