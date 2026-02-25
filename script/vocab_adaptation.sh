@@ -20,10 +20,11 @@ export DATASET_PATH="./data/pretrain-dataset/pile00-${TGT}-tokenized"
 
 export CONFIG_FILE="./data/Deepspeed-Configs/zero3.yaml"
 
-# Reduced for 22GB GPU: batch 8 OOMs with 2048 seq + 151K vocab
-export TRAIN_BS=2
+# Tuned for A10 24GB: batch 4, seq 2048, 151K vocab
+# (V100 22GB: use TRAIN_BS=2, GRADIENT_ACC=64)
+export TRAIN_BS=4
 export EVAL_BS=1
-export GRADIENT_ACC=64
+export GRADIENT_ACC=32
 
 export BLOCK_SIZE=2048
 
@@ -53,8 +54,9 @@ fi
 MODEL_DIR="${MAIN_DIR}/log/$PREFIX"
 LOG_FILE="${MAIN_DIR}/log/${PREFIX}.log"
 
-# Reduce CUDA fragmentation (helps with OOM)
+# A10 24GB: reduce CUDA fragmentation; TF32 for faster matmuls on Ampere
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export TORCH_ALLOW_TF32_CUBLAS=1
 
 # Check if STAGE-1 is already complete
 STAGE1_CHECKPOINT="${MAIN_DIR}/log/${MODEL}/${SEED}_${TGT}_S1/checkpoint-${NUM_STEPS}"
@@ -92,7 +94,7 @@ else
         ${ADD_PARAMETERS} \
         --warmup_ratio 0.03 \
         --finetune_embed_only True \
-        --use_flash_attn False 2>&1 >$LOG_FILE  # FlashAttention backward requires A100/H100; use False for V100
+        --use_flash_attn False 2>&1 >$LOG_FILE  # FA2 backward needs A100/H100; A10 uses SDPA
     
     # Verify STAGE-1 completed successfully
     if [ ! -d "${STAGE1_CHECKPOINT}" ]; then
@@ -171,5 +173,5 @@ accelerate launch \
     --train_start_idx ${TRAIN_START_IDX} \
     ${ADD_PARAMETERS} \
     --warmup_ratio 0.03 \
-    --use_flash_attn False 2>&1 >$LOG_FILE  # FlashAttention backward requires A100/H100
+    --use_flash_attn False 2>&1 >$LOG_FILE  # A10: use SDPA (FA2 backward needs A100/H100)
   
