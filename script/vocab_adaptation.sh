@@ -92,7 +92,7 @@ else
         ${ADD_PARAMETERS} \
         --warmup_ratio 0.03 \
         --finetune_embed_only True \
-        --use_flash_attn True 2>&1 >$LOG_FILE
+        --use_flash_attn False 2>&1 >$LOG_FILE  # FlashAttention backward requires A100/H100; use False for V100
     
     # Verify STAGE-1 completed successfully
     if [ ! -d "${STAGE1_CHECKPOINT}" ]; then
@@ -171,5 +171,5 @@ accelerate launch \
     --train_start_idx ${TRAIN_START_IDX} \
     ${ADD_PARAMETERS} \
     --warmup_ratio 0.03 \
-    --use_flash_attn True 2>&1 >$LOG_FILE
+    --use_flash_attn False 2>&1 >$LOG_FILE  # FlashAttention backward requires A100/H100
   
