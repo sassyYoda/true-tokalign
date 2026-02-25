@@ -268,13 +268,14 @@ def create_and_prepare_model(args):
     if args.use_4bit_qunatization or args.use_8bit_qunatization:
         device_map = "auto"  # {"": 0}
 
+    attn_impl = "flash_attention_2" if args.use_flash_attn else "sdpa"
     model = AutoModelForCausalLM.from_pretrained(
         args.model_name,
         load_in_8bit=load_in_8bit,
         quantization_config=bnb_config,
         device_map=device_map,
         use_cache=not args.use_gradient_checkpointing,
-        attn_implementation="flash_attention_2",
+        attn_implementation=attn_impl,
         torch_dtype=torch.bfloat16,
         trust_remote_code=True,
     )
