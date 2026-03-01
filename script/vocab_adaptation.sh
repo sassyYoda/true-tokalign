@@ -9,7 +9,7 @@ cd ${MAIN_DIR}
 export GPUNUM=1  # Single GPU
 export MASTER_PORT=16900
 
-export MODEL="1b"
+export MODEL="${MODEL:-1b}"
 
 export TGT="qwen2-7b"
 
